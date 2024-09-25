@@ -37,3 +37,38 @@ func (r *Result) JSON() string {
 	data, _ := json.Marshal(r)
 	return string(data)
 }
+
+type ResultSet []Result
+
+func NewResultSet(a ...Result) *ResultSet {
+	s := &ResultSet{}
+	s.Add(a...)
+	return s
+}
+
+func (this *ResultSet) Add(n ...Result) {
+	for _, r := range n {
+		*this = append(*this, r)
+	}
+}
+
+func (this *ResultSet) AsArray() []Result {
+	a := []Result{}
+	for _, n := range *this {
+		a = append(a, n)
+	}
+	return a
+}
+
+type IpDomain struct {
+	IP     string `excel:"name:IP;"`
+	Domain string `excel:"name:域名;"`
+}
+
+func IpDomainArray(ip string, hosts []string) []IpDomain {
+	res := []IpDomain{}
+	for _, host := range hosts {
+		res = append(res, IpDomain{IP: ip, Domain: host})
+	}
+	return res
+}

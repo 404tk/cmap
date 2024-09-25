@@ -15,6 +15,7 @@ import (
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
 	"github.com/404tk/cmap/sources/plugins"
+	"github.com/404tk/cmap/utils"
 )
 
 var (
@@ -66,21 +67,25 @@ func main() {
 	}
 
 	hashMap := make(map[string]int)
-	ipMap := make(map[string]interface{})
+	ipMap := make(map[string]ipDetail)
 	result := func(result sources.Result) {
 		if result.Error != nil {
 			fmt.Printf("[%s] %v\n", result.Source, result.Error)
 		} else {
-			// 基于IP、端口、请求地址生成唯一hash进行去重
-			index := generateHash(fmt.Sprintf("%s_%s_%s", result.IP, result.Port, result.Url))
+			// 基于IP、端口生成唯一hash进行去重
+			index := generateHash(fmt.Sprintf("%s_%s", result.IP, result.Port))
 			if _, ok := hashMap[index]; ok {
 				hashMap[index] += 1
 			} else {
-				hashMap[index] = 0
+				hashMap[index] = 1
 				if v, ok := ipMap[result.IP]; ok {
-					ipMap[result.IP] = append(v.([]sources.Result), result)
+					v.Ports.Add(result)
+					v.Hosts.AddAll(result.Host)
 				} else {
-					ipMap[result.IP] = []sources.Result{result}
+					ipMap[result.IP] = ipDetail{
+						Ports: sources.NewResultSet(result),
+						Hosts: utils.NewStringSetByArray(result.Host),
+					}
 				}
 			}
 			fmt.Printf("[%s] %s %s\n", result.Source, result.PrettyPrint(), result.Title)
@@ -97,7 +102,12 @@ func main() {
 	excelExport(ipMap)
 }
 
-func excelExport(data map[string]interface{}) {
+type ipDetail struct {
+	Ports *sources.ResultSet
+	Hosts utils.StringSet
+}
+
+func excelExport(data map[string]ipDetail) {
 	if !strings.HasSuffix(output, ".xlsx") {
 		fmt.Println("导出文件仅支持.xlsx格式！")
 		return
@@ -109,10 +119,20 @@ func excelExport(data map[string]interface{}) {
 		}
 	}()
 
-	e.F.SetSheetName("Sheet1", "IP视角")
+	portMap := make(map[string]interface{})
+	hostMap := make(map[string]interface{})
+	for ip, d := range data {
+		portMap[ip] = d.Ports.AsArray()
+		hostMap[ip] = sources.IpDomainArray(ip, d.Hosts.AsArray())
+	}
 
-	err := e.ExportExcel("IP视角", "IP视角", data, nil)
-	if err != nil {
+	e.F.SetSheetName("Sheet1", "端口服务")
+	if err := e.ExportExcel("端口服务", "端口服务", portMap, nil); err != nil {
+		return
+	}
+
+	e.F.NewSheet("关联域名")
+	if err := e.ExportExcel("关联域名", "关联域名", hostMap, nil); err != nil {
 		return
 	}
 

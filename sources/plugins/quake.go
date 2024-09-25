@@ -181,9 +181,9 @@ func (f Quake) search(ctx context.Context, query string) {
 				result.Host = append(result.Host, host)
 			}
 			if result.Protocol == "http" {
-				result.Url = fmt.Sprintf("http://%s", res.Service.Http.Host)
+				result.Url = fmt.Sprintf("http://%s", result.IpPort())
 			} else if result.Protocol == "http/ssl" {
-				result.Url = fmt.Sprintf("https://%s", res.Service.Http.Host)
+				result.Url = fmt.Sprintf("https://%s", result.IpPort())
 			}
 			result.Prompt = query
 
