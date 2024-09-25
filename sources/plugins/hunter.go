@@ -38,14 +38,22 @@ func (f Hunter) Query(session *sources.Session, query interface{}) (chan sources
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	q := query.(Keyword)
+	k := query.(Keyword)
 	go func() {
 		defer close(f.results)
 
-		f.QueryIP(ctx, q.IP)
-		f.QueryDomain(ctx, q.Domain)
-		f.QueryIcon(ctx, q.Icon.Md5)
-		f.QueryCert(ctx, q.Cert)
+		for _, ip := range k.IP {
+			f.QueryIP(ctx, ip)
+		}
+		for _, domain := range k.Domain {
+			f.QueryDomain(ctx, domain)
+		}
+		for _, q := range k.Icon {
+			f.QueryIcon(ctx, q.Md5)
+		}
+		for _, cert := range k.Cert {
+			f.QueryCert(ctx, cert)
+		}
 	}()
 
 	return f.results, nil
@@ -150,7 +158,7 @@ func (f Hunter) search(ctx context.Context, query string) {
 			result.Title = res.WebTitle
 			parsedTime, err := time.Parse(time.DateOnly, res.UpdatedAt)
 			if err == nil {
-				result.LastUpdate = parsedTime.Format("2006-01-02 15:04:05")
+				result.LastUpdate = parsedTime.Format(time.DateTime)
 			}
 			result.Prompt = query
 			f.results <- result

@@ -19,18 +19,22 @@ import (
 
 var (
 	agent      string
-	keyword    plugins.Keyword
+	ip         string
+	domain     string
+	md5_str    string
+	mmh3_str   string
+	cert       string
 	configPath string
 	output     string
 )
 
 func init() {
 	flag.StringVar(&agent, "agent", "fofa,quake,hunter,shodan", "Agent")
-	flag.StringVar(&keyword.IP, "ip", "", "IP")
-	flag.StringVar(&keyword.Domain, "domain", "", "Domain")
-	flag.StringVar(&keyword.Icon.Md5, "md5", "", "Favicon md5")
-	flag.StringVar(&keyword.Icon.Mmh3, "mmh3", "", "Favicon mmh3")
-	flag.StringVar(&keyword.Cert, "cert", "", "Certificate")
+	flag.StringVar(&ip, "ip", "", "IP")
+	flag.StringVar(&domain, "domain", "", "Domain")
+	flag.StringVar(&md5_str, "md5", "", "Favicon md5")
+	flag.StringVar(&mmh3_str, "mmh3", "", "Favicon mmh3")
+	flag.StringVar(&cert, "cert", "", "Certificate")
 	flag.StringVar(&configPath, "config", "config.yaml", "config file path")
 	flag.StringVar(&output, "oX", "", "output filename")
 	flag.Parse()
@@ -43,8 +47,16 @@ func init() {
 func main() {
 	config.InitConfig(configPath)
 	opts := &options.Options{
-		Agents:  strings.Split(agent, ","),
-		Query:   keyword,
+		Agents: strings.Split(agent, ","),
+		Query: plugins.Keyword{
+			IP:     []string{ip},
+			Domain: []string{domain},
+			Icon: []struct {
+				Md5  string
+				Mmh3 string
+			}{{md5_str, mmh3_str}},
+			Cert: []string{cert},
+		},
 		Timeout: 20,
 	}
 
@@ -97,9 +109,9 @@ func excelExport(data map[string]interface{}) {
 		}
 	}()
 
-	e.F.SetSheetName("Sheet1", "结果导出")
+	e.F.SetSheetName("Sheet1", "IP视角")
 
-	err := e.ExportExcel("结果导出", "结果导出", data, nil)
+	err := e.ExportExcel("IP视角", "IP视角", data, nil)
 	if err != nil {
 		return
 	}
@@ -108,6 +120,7 @@ func excelExport(data map[string]interface{}) {
 		fmt.Println(err)
 		return
 	}
+	fmt.Println("结果已导出至", output)
 }
 
 func generateHash(s string) string {

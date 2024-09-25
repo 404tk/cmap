@@ -8,13 +8,13 @@ import (
 )
 
 type Keyword struct {
-	IP     string
-	Domain string
-	Icon   struct {
+	IP     []string
+	Domain []string
+	Icon   []struct {
 		Md5  string
 		Mmh3 string
 	}
-	Cert string
+	Cert []string
 }
 
 type Plugin interface {
