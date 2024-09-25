@@ -76,6 +76,7 @@ func main() {
 			index := generateHash(fmt.Sprintf("%s_%s", result.IP, result.Port))
 			if _, ok := hashMap[index]; ok {
 				hashMap[index] += 1
+				ipMap[result.IP].Hosts.AddAll(result.Host)
 			} else {
 				hashMap[index] = 1
 				if v, ok := ipMap[result.IP]; ok {
