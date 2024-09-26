@@ -143,7 +143,9 @@ func (f Fofa) search(ctx context.Context, query string) {
 			result.IP = fofaResult[0]
 			result.Port = fmt.Sprintf("%s/%s", fofaResult[1], fofaResult[2])
 			result.Protocol = fofaResult[3]
-			result.Host = append(result.Host, fofaResult[4])
+			if len(fofaResult[4]) > 0 {
+				result.Host = append(result.Host, fofaResult[4])
+			}
 			if strings.HasPrefix(fofaResult[3], "http") {
 				result.Url = fofaResult[5]
 				result.Title = fofaResult[6]

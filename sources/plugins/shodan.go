@@ -149,8 +149,8 @@ func (f Shodan) search(ctx context.Context, query string) {
 			}
 			result.IP = res.IP
 			result.Port = fmt.Sprintf("%d/%s", res.Port, res.Transport)
-			for _, hostname := range res.Hostname {
-				result.Host = append(result.Host, hostname)
+			if len(res.Hostname) > 0 {
+				result.Host = res.Hostname
 			}
 			if len(res.Http.Host) > 0 {
 				result.Title = res.Http.Title

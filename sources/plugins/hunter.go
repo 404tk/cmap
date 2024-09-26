@@ -153,7 +153,9 @@ func (f Hunter) search(ctx context.Context, query string) {
 			result.IP = res.IP
 			result.Port = fmt.Sprintf("%d/%s", res.Port, res.BaseProtocol)
 			result.Protocol = res.Protocol
-			result.Host = append(result.Host, res.Domain)
+			if len(res.Domain) > 0 {
+				result.Host = append(result.Host, res.Domain)
+			}
 			result.Url = res.Url
 			result.Title = res.WebTitle
 			parsedTime, err := time.Parse(time.DateOnly, res.UpdatedAt)
