@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/404tk/cmap"
@@ -35,11 +33,12 @@ func main() {
 		if result.Error != nil {
 			fmt.Printf("[%s] %v\n", result.Source, result.Error)
 		} else {
-			// 基于IP、端口生成唯一hash进行去重
-			index := generateHash(fmt.Sprintf("%s_%s", result.IP, result.Port))
-			if !hashMap[index] {
-				hashMap[index] = true
+			// 基于IP+端口进行去重
+			index := fmt.Sprintf("%s_%s", result.IP, result.Port)
+			if hashMap[index] {
+				return
 			}
+			hashMap[index] = true
 			// result.Url
 			fmt.Printf("[%s] %s %s\n", result.Source, result.PrettyPrint(), result.Title)
 		}
@@ -52,10 +51,4 @@ func main() {
 	if err := u.ExecuteWithCallback(context.TODO(), result); err != nil {
 		panic(err)
 	}
-}
-
-func generateHash(s string) string {
-	hasher := md5.New()
-	hasher.Write([]byte(s))
-	return hex.EncodeToString(hasher.Sum(nil))
 }

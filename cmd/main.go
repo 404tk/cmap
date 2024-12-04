@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"strings"
@@ -72,8 +70,8 @@ func main() {
 		if result.Error != nil {
 			fmt.Printf("[%s] %v\n", result.Source, result.Error)
 		} else {
-			// 基于IP、端口生成唯一hash进行去重
-			index := generateHash(fmt.Sprintf("%s_%s", result.IP, result.Port))
+			// 基于IP+端口进行去重
+			index := fmt.Sprintf("%s_%s", result.IP, result.Port)
 			if _, ok := hashMap[index]; ok {
 				hashMap[index] += 1
 				ipMap[result.IP].Hosts.AddAll(result.Host)
@@ -110,8 +108,8 @@ type ipDetail struct {
 
 func excelExport(data map[string]ipDetail) {
 	if !strings.HasSuffix(output, ".xlsx") {
-		fmt.Println("导出文件仅支持.xlsx格式！")
-		return
+		fmt.Println("[!] 导出文件仅支持.xlsx格式！")
+		output += ".xlsx"
 	}
 	e := excel.ExcelInit()
 	defer func() {
@@ -142,10 +140,4 @@ func excelExport(data map[string]ipDetail) {
 		return
 	}
 	fmt.Println("结果已导出至", output)
-}
-
-func generateHash(s string) string {
-	hasher := md5.New()
-	hasher.Write([]byte(s))
-	return hex.EncodeToString(hasher.Sum(nil))
 }
