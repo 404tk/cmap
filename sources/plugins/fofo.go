@@ -148,6 +148,9 @@ func (f Fofa) search(ctx context.Context, query string) {
 			}
 			if strings.HasPrefix(fofaResult[3], "http") {
 				result.Url = fofaResult[5]
+				if !strings.HasPrefix(result.Url, "http") {
+					result.Url = "http://" + fofaResult[5]
+				}
 				result.Title = fofaResult[6]
 			}
 			result.Fingerprint = fofaResult[7]
