@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
+	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
 )
@@ -38,57 +40,64 @@ func (f Shodan) Query(session *sources.Session, query interface{}) (chan sources
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	k := query.(Keyword)
+	k := query.(options.Keyword)
 	go func() {
 		defer close(f.results)
 
 		for _, ip := range k.IP {
-			f.QueryIP(ctx, ip)
+			f.queryIP(ctx, ip)
 		}
 		for _, domain := range k.Domain {
-			f.QueryDomain(ctx, domain)
+			f.queryDomain(ctx, domain)
 		}
-		for _, q := range k.Icon {
-			f.QueryIcon(ctx, q.Mmh3)
-		}
-		for _, cert := range k.Cert {
-			f.QueryCert(ctx, cert)
+		for _, q := range k.DSL {
+			str := q.Expr
+			for i, g := range q.Groups {
+				dsl := f.parseDSL(g.Key, g.Value)
+				if dsl == "" {
+					goto next
+				}
+				str = strings.Replace(str, fmt.Sprintf("[%d]", i), dsl, 1)
+			}
+			f.search(ctx, str, q.Raw)
+		next:
 		}
 	}()
 
 	return f.results, nil
 }
 
-func (f Shodan) QueryIP(ctx context.Context, ip string) {
+func (f Shodan) queryIP(ctx context.Context, ip string) {
 	if len(ip) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`net:"%s"`, ip)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("ip", ip), ip)
 }
 
-func (f Shodan) QueryDomain(ctx context.Context, domain string) {
+func (f Shodan) queryDomain(ctx context.Context, domain string) {
 	if len(domain) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`hostname:"%s"`, domain)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("domain", domain), domain)
 }
 
-func (f Shodan) QueryIcon(ctx context.Context, hash string) {
-	if len(hash) == 0 {
-		return
+func (f Shodan) parseDSL(k, v string) string {
+	switch k {
+	case "ip":
+		return fmt.Sprintf(`net:"%s"`, v)
+	case "domain":
+		return fmt.Sprintf(`hostname:"%s"`, v)
+	case "icon.mmh3":
+		return fmt.Sprintf(`http.favicon.hash:"%s"`, v)
+	case "cert":
+		return fmt.Sprintf(`ssl:"%s"`, v)
+	//case "title":
+	//return fmt.Sprintf(`title="%s"`, v)
+	//case "body":
+	//return fmt.Sprintf(`body="%s"`, v)
+	default:
+		return ""
 	}
-	query := fmt.Sprintf(`http.favicon.hash:"%s"`, hash)
-	f.search(ctx, query)
-}
-
-func (f Shodan) QueryCert(ctx context.Context, keyword string) {
-	if len(keyword) == 0 {
-		return
-	}
-	query := fmt.Sprintf(`ssl:"%s"`, keyword)
-	f.search(ctx, query)
 }
 
 type ShodanResponse struct {
@@ -111,7 +120,7 @@ type ShodanResponse struct {
 	} `json:"matches"`
 }
 
-func (f Shodan) search(ctx context.Context, query string) {
+func (f Shodan) search(ctx context.Context, query, prompt string) {
 	page := 1
 	var numberOfResults int
 	for {
@@ -167,7 +176,7 @@ func (f Shodan) search(ctx context.Context, query string) {
 			if err == nil {
 				result.LastUpdate = parsedTime.Format(time.DateTime)
 			}
-			result.Prompt = query
+			result.Prompt = prompt
 			f.results <- result
 		}
 

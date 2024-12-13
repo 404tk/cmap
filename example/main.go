@@ -8,7 +8,7 @@ import (
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
-	"github.com/404tk/cmap/sources/plugins"
+	_ "github.com/404tk/cmap/sources/plugins"
 )
 
 var configPath = "config.yaml"
@@ -17,7 +17,7 @@ func main() {
 	config.InitConfig(configPath)
 	opts := &options.Options{
 		Agents: []string{"fofa", "quake", "hunter", "shodan"},
-		Query: plugins.Keyword{
+		Query: options.Keyword{
 			Domain: []string{"cnblogs.com"},
 		},
 		Timeout: 20,

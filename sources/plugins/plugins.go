@@ -1,29 +1,14 @@
 package plugins
 
 import (
-	"context"
 	"log"
 
 	"github.com/404tk/cmap/sources"
 )
 
-type Keyword struct {
-	IP     []string
-	Domain []string
-	Icon   []struct {
-		Md5  string
-		Mmh3 string
-	}
-	Cert []string
-}
-
 type Plugin interface {
 	Name() string
 	Query(*sources.Session, interface{}) (chan sources.Result, error)
-	QueryIP(context.Context, string)
-	QueryDomain(context.Context, string)
-	QueryIcon(context.Context, string)
-	QueryCert(context.Context, string)
 }
 
 var Plugins = make(map[string]Plugin)
@@ -33,4 +18,11 @@ func registerPlugin(pName string, p Plugin) {
 		log.Fatalln("插件名称重复:", pName)
 	}
 	Plugins[pName] = p
+}
+
+func truncateString(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }

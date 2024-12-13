@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
 )
@@ -38,57 +40,64 @@ func (f Hunter) Query(session *sources.Session, query interface{}) (chan sources
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	k := query.(Keyword)
+	k := query.(options.Keyword)
 	go func() {
 		defer close(f.results)
 
 		for _, ip := range k.IP {
-			f.QueryIP(ctx, ip)
+			f.queryIP(ctx, ip)
 		}
 		for _, domain := range k.Domain {
-			f.QueryDomain(ctx, domain)
+			f.queryDomain(ctx, domain)
 		}
-		for _, q := range k.Icon {
-			f.QueryIcon(ctx, q.Md5)
-		}
-		for _, cert := range k.Cert {
-			f.QueryCert(ctx, cert)
+		for _, q := range k.DSL {
+			str := q.Expr
+			for i, g := range q.Groups {
+				dsl := f.parseDSL(g.Key, g.Value)
+				if dsl == "" {
+					goto next
+				}
+				str = strings.Replace(str, fmt.Sprintf("[%d]", i), dsl, 1)
+			}
+			f.search(ctx, str, q.Raw)
+		next:
 		}
 	}()
 
 	return f.results, nil
 }
 
-func (f Hunter) QueryIP(ctx context.Context, ip string) {
+func (f Hunter) queryIP(ctx context.Context, ip string) {
 	if len(ip) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`ip="%s"`, ip)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("ip", ip), ip)
 }
 
-func (f Hunter) QueryDomain(ctx context.Context, domain string) {
+func (f Hunter) queryDomain(ctx context.Context, domain string) {
 	if len(domain) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`domain.suffix="%s"`, domain)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("domain", domain), domain)
 }
 
-func (f Hunter) QueryIcon(ctx context.Context, hash string) {
-	if len(hash) == 0 {
-		return
+func (f Hunter) parseDSL(k, v string) string {
+	switch k {
+	case "ip":
+		return fmt.Sprintf(`ip="%s"`, v)
+	case "domain":
+		return fmt.Sprintf(`domain.suffix="%s"`, v)
+	case "icon.md5":
+		return fmt.Sprintf(`web.icon="%s"`, v)
+	case "cert":
+		return fmt.Sprintf(`cert="%s"`, v)
+	//case "title":
+	//return fmt.Sprintf(`title="%s"`, v)
+	//case "body":
+	//return fmt.Sprintf(`body="%s"`, v)
+	default:
+		return ""
 	}
-	query := fmt.Sprintf(`web.icon="%s"`, hash)
-	f.search(ctx, query)
-}
-
-func (f Hunter) QueryCert(ctx context.Context, keyword string) {
-	if len(keyword) == 0 {
-		return
-	}
-	query := fmt.Sprintf(`cert="%s"`, keyword)
-	f.search(ctx, query)
 }
 
 type HunterResponse struct {
@@ -113,7 +122,7 @@ type HunterResponse struct {
 	Msg string `json:"message"`
 }
 
-func (f Hunter) search(ctx context.Context, query string) {
+func (f Hunter) search(ctx context.Context, query, prompt string) {
 	page := 1
 	for {
 		base64Query := base64.URLEncoding.EncodeToString([]byte(query))
@@ -162,7 +171,7 @@ func (f Hunter) search(ctx context.Context, query string) {
 			if err == nil {
 				result.LastUpdate = parsedTime.Format(time.DateTime)
 			}
-			result.Prompt = query
+			result.Prompt = prompt
 			f.results <- result
 		}
 

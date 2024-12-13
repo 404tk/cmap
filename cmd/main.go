@@ -12,7 +12,7 @@ import (
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
-	"github.com/404tk/cmap/sources/plugins"
+	_ "github.com/404tk/cmap/sources/plugins"
 	"github.com/404tk/cmap/utils"
 )
 
@@ -20,9 +20,7 @@ var (
 	agent      string
 	ip         string
 	domain     string
-	md5_str    string
-	mmh3_str   string
-	cert       string
+	query      string
 	configPath string
 	output     string
 )
@@ -31,9 +29,7 @@ func init() {
 	flag.StringVar(&agent, "agent", "fofa,quake,hunter,shodan", "Agent")
 	flag.StringVar(&ip, "ip", "", "IP")
 	flag.StringVar(&domain, "domain", "", "Domain")
-	flag.StringVar(&md5_str, "md5", "", "Favicon md5")
-	flag.StringVar(&mmh3_str, "mmh3", "", "Favicon mmh3")
-	flag.StringVar(&cert, "cert", "", "Certificate")
+	flag.StringVar(&query, "q", "", "Example: title=\"Harbor\"")
 	flag.StringVar(&configPath, "config", "config.yaml", "config file path")
 	flag.StringVar(&output, "oX", "", "output filename")
 	flag.Parse()
@@ -47,14 +43,10 @@ func main() {
 	config.InitConfig(configPath)
 	opts := &options.Options{
 		Agents: strings.Split(agent, ","),
-		Query: plugins.Keyword{
+		Query: options.Keyword{
 			IP:     []string{ip},
 			Domain: []string{domain},
-			Icon: []struct {
-				Md5  string
-				Mmh3 string
-			}{{md5_str, mmh3_str}},
-			Cert: []string{cert},
+			DSL:    options.NewDslSlice(query),
 		},
 		Timeout: 20,
 	}
@@ -87,7 +79,7 @@ func main() {
 					}
 				}
 			}
-			fmt.Printf("[%s] %s %s\n", result.Source, result.PrettyPrint(), result.Title)
+			fmt.Printf("[%s] %s %s\n"+result.Prompt, result.Source, result.PrettyPrint(), result.Title)
 		}
 	}
 

@@ -3,6 +3,7 @@ module github.com/404tk/cmap
 go 1.21.3
 
 require (
+	github.com/dlclark/regexp2 v1.8.1
 	github.com/projectdiscovery/ratelimit v0.0.55
 	github.com/spf13/viper v1.19.0
 	github.com/xuri/excelize/v2 v2.8.1

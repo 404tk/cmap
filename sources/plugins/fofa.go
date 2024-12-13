@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
 )
@@ -40,57 +41,62 @@ func (f Fofa) Query(session *sources.Session, query interface{}) (chan sources.R
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	k := query.(Keyword)
+	k := query.(options.Keyword)
 	go func() {
 		defer close(f.results)
 
 		for _, ip := range k.IP {
-			f.QueryIP(ctx, ip)
+			f.queryIP(ctx, ip)
 		}
 		for _, domain := range k.Domain {
-			f.QueryDomain(ctx, domain)
+			f.queryDomain(ctx, domain)
 		}
-		for _, q := range k.Icon {
-			f.QueryIcon(ctx, q.Mmh3)
-		}
-		for _, cert := range k.Cert {
-			f.QueryCert(ctx, cert)
+		for _, q := range k.DSL {
+			str := q.Expr
+			for i, g := range q.Groups {
+				dsl := f.parseDSL(g.Key, g.Value)
+				if dsl == "" {
+					break
+				}
+				str = strings.Replace(str, fmt.Sprintf("[%d]", i), dsl, 1)
+			}
+			f.search(ctx, str, q.Raw)
 		}
 	}()
-
 	return f.results, nil
 }
 
-func (f Fofa) QueryIP(ctx context.Context, ip string) {
+func (f Fofa) queryIP(ctx context.Context, ip string) {
 	if len(ip) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`ip="%s"`, ip)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("ip", ip), ip)
 }
 
-func (f Fofa) QueryDomain(ctx context.Context, domain string) {
+func (f Fofa) queryDomain(ctx context.Context, domain string) {
 	if len(domain) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`domain="%s"`, domain)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("domain", domain), domain)
 }
 
-func (f Fofa) QueryIcon(ctx context.Context, hash string) {
-	if len(hash) == 0 {
-		return
+func (f Fofa) parseDSL(k, v string) string {
+	switch k {
+	case "ip":
+		return fmt.Sprintf(`ip="%s"`, v)
+	case "domain":
+		return fmt.Sprintf(`domain="%s"`, v)
+	case "icon.mmh3":
+		return fmt.Sprintf(`icon_hash="%s"`, v)
+	case "cert":
+		return fmt.Sprintf(`cert="%s"`, v)
+	case "title":
+		return fmt.Sprintf(`title="%s"`, v)
+	case "body":
+		return fmt.Sprintf(`body="%s"`, v)
+	default:
+		return ""
 	}
-	query := fmt.Sprintf(`icon_hash="%s"`, hash)
-	f.search(ctx, query)
-}
-
-func (f Fofa) QueryCert(ctx context.Context, keyword string) {
-	if len(keyword) == 0 {
-		return
-	}
-	query := fmt.Sprintf(`cert="%s"`, keyword)
-	f.search(ctx, query)
 }
 
 // FofaResponse contains the fofa response
@@ -104,7 +110,7 @@ type FofaResponse struct {
 	Size    int        `json:"size"`
 }
 
-func (f Fofa) search(ctx context.Context, query string) {
+func (f Fofa) search(ctx context.Context, query, prompt string) {
 	page := 1
 	for {
 		req := &sources.Req{
@@ -151,11 +157,11 @@ func (f Fofa) search(ctx context.Context, query string) {
 				if !strings.HasPrefix(result.Url, "http") {
 					result.Url = "http://" + fofaResult[5]
 				}
-				result.Title = fofaResult[6]
+				result.Title = truncateString(fofaResult[6], 100)
 			}
 			result.Fingerprint = fofaResult[7]
 			result.LastUpdate = fofaResult[8]
-			result.Prompt = query
+			result.Prompt = prompt
 			f.results <- result
 		}
 

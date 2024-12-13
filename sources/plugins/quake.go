@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
 )
@@ -38,57 +39,64 @@ func (f Quake) Query(session *sources.Session, query interface{}) (chan sources.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	k := query.(Keyword)
+	k := query.(options.Keyword)
 	go func() {
 		defer close(f.results)
 
 		for _, ip := range k.IP {
-			f.QueryIP(ctx, ip)
+			f.queryIP(ctx, ip)
 		}
 		for _, domain := range k.Domain {
-			f.QueryDomain(ctx, domain)
+			f.queryDomain(ctx, domain)
 		}
-		for _, q := range k.Icon {
-			f.QueryIcon(ctx, q.Md5)
-		}
-		for _, cert := range k.Cert {
-			f.QueryCert(ctx, cert)
+		for _, q := range k.DSL {
+			str := q.Expr
+			for i, g := range q.Groups {
+				dsl := f.parseDSL(g.Key, g.Value)
+				if dsl == "" {
+					goto next
+				}
+				str = strings.Replace(str, fmt.Sprintf("[%d]", i), dsl, 1)
+			}
+			f.search(ctx, str, q.Raw)
+		next:
 		}
 	}()
 
 	return f.results, nil
 }
 
-func (f Quake) QueryIP(ctx context.Context, ip string) {
+func (f Quake) queryIP(ctx context.Context, ip string) {
 	if len(ip) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`ip:"%s"`, ip)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("ip", ip), ip)
 }
 
-func (f Quake) QueryDomain(ctx context.Context, domain string) {
+func (f Quake) queryDomain(ctx context.Context, domain string) {
 	if len(domain) == 0 {
 		return
 	}
-	query := fmt.Sprintf(`domain:"*.%s"`, domain)
-	f.search(ctx, query)
+	f.search(ctx, f.parseDSL("domain", domain), domain)
 }
 
-func (f Quake) QueryIcon(ctx context.Context, hash string) {
-	if len(hash) == 0 {
-		return
+func (f Quake) parseDSL(k, v string) string {
+	switch k {
+	case "ip":
+		return fmt.Sprintf(`ip:"%s"`, v)
+	case "domain":
+		return fmt.Sprintf(`domain:"*.%s"`, v)
+	case "icon.md5":
+		return fmt.Sprintf(`favicon:"%s"`, v)
+	case "cert":
+		return fmt.Sprintf(`cert:"%s"`, v)
+	//case "title":
+	//return fmt.Sprintf(`title="%s"`, v)
+	//case "body":
+	//return fmt.Sprintf(`body="%s"`, v)
+	default:
+		return ""
 	}
-	query := fmt.Sprintf(`favicon:"%s"`, hash)
-	f.search(ctx, query)
-}
-
-func (f Quake) QueryCert(ctx context.Context, keyword string) {
-	if len(keyword) == 0 {
-		return
-	}
-	query := fmt.Sprintf(`cert:"%s"`, keyword)
-	f.search(ctx, query)
 }
 
 type QuakeRequest struct {
@@ -107,7 +115,7 @@ func (req *QuakeRequest) toString() string {
 	return string(jsonStr)
 }
 
-func (f Quake) search(ctx context.Context, query string) {
+func (f Quake) search(ctx context.Context, query, prompt string) {
 	numberOfResults := 0
 	for {
 		quakeRequest := &QuakeRequest{
@@ -185,7 +193,7 @@ func (f Quake) search(ctx context.Context, query string) {
 			} else if result.Protocol == "http/ssl" {
 				result.Url = fmt.Sprintf("https://%s", result.IpPort())
 			}
-			result.Prompt = query
+			result.Prompt = prompt
 
 			f.results <- result
 		}
