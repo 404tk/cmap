@@ -11,11 +11,14 @@ import (
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
+	"github.com/dlclark/regexp2"
 )
 
 const (
 	ShodanSize = 100
 )
+
+var replacePat = regexp2.MustCompile(`(\s{0,}&&\s{0,})`, regexp2.None)
 
 type Shodan struct {
 	apikey  string
@@ -52,6 +55,14 @@ func (f Shodan) Query(session *sources.Session, query interface{}) (chan sources
 		}
 		for _, q := range k.DSL {
 			str := q.Expr
+			if strings.Contains(str, "||") {
+				// 暂不支持OR连接符
+				continue
+			}
+			str, err := replacePat.Replace(str, " ", -1, -1)
+			if err != nil {
+				continue
+			}
 			for i, g := range q.Groups {
 				dsl := f.parseDSL(g.Key, g.Value)
 				if dsl == "" {
@@ -91,10 +102,10 @@ func (f Shodan) parseDSL(k, v string) string {
 		return fmt.Sprintf(`http.favicon.hash:"%s"`, v)
 	case "cert":
 		return fmt.Sprintf(`ssl:"%s"`, v)
-	//case "title":
-	//return fmt.Sprintf(`title="%s"`, v)
-	//case "body":
-	//return fmt.Sprintf(`body="%s"`, v)
+	case "title":
+		return fmt.Sprintf(`http.title:"%s"`, v)
+	case "body":
+		return fmt.Sprintf(`http.html:"%s"`, v)
 	default:
 		return ""
 	}

@@ -53,7 +53,7 @@ func (f Hunter) Query(session *sources.Session, query interface{}) (chan sources
 		for _, q := range k.DSL {
 			str := q.Expr
 			for i, g := range q.Groups {
-				dsl := f.parseDSL(g.Key, g.Value)
+				dsl := f.parseDSL(g.Key, g.Symbol, g.Value)
 				if dsl == "" {
 					goto next
 				}
@@ -71,30 +71,30 @@ func (f Hunter) queryIP(ctx context.Context, ip string) {
 	if len(ip) == 0 {
 		return
 	}
-	f.search(ctx, f.parseDSL("ip", ip), ip)
+	f.search(ctx, f.parseDSL("ip", "==", ip), ip)
 }
 
 func (f Hunter) queryDomain(ctx context.Context, domain string) {
 	if len(domain) == 0 {
 		return
 	}
-	f.search(ctx, f.parseDSL("domain", domain), domain)
+	f.search(ctx, f.parseDSL("domain", "=", domain), domain)
 }
 
-func (f Hunter) parseDSL(k, v string) string {
+func (f Hunter) parseDSL(k, s, v string) string {
 	switch k {
 	case "ip":
-		return fmt.Sprintf(`ip="%s"`, v)
+		return fmt.Sprintf(`ip%s"%s"`, s, v)
 	case "domain":
-		return fmt.Sprintf(`domain.suffix="%s"`, v)
+		return fmt.Sprintf(`domain.suffix%s"%s"`, s, v)
 	case "icon.md5":
-		return fmt.Sprintf(`web.icon="%s"`, v)
+		return fmt.Sprintf(`web.icon%s"%s"`, s, v)
 	case "cert":
-		return fmt.Sprintf(`cert="%s"`, v)
-	//case "title":
-	//return fmt.Sprintf(`title="%s"`, v)
-	//case "body":
-	//return fmt.Sprintf(`body="%s"`, v)
+		return fmt.Sprintf(`cert%s"%s"`, s, v)
+	case "title":
+		return fmt.Sprintf(`web.title%s"%s"`, s, v)
+	case "body":
+		return fmt.Sprintf(`web.body%s"%s"`, s, v)
 	default:
 		return ""
 	}

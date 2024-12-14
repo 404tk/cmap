@@ -28,11 +28,12 @@ func NewDslSlice(input string) []queries {
 }
 
 type query struct {
-	Key   string
-	Value string
+	Key    string
+	Symbol string
+	Value  string
 }
 
-var parsePat = regexp2.MustCompile(`(ip|domain|icon\.md5|icon\.mmh3|cert|title|body)\s{0,}=\s{0,}["']([^"'\n]+)["']`, regexp2.None)
+var parsePat = regexp2.MustCompile(`(ip|domain|icon\.md5|icon\.mmh3|cert|title|body)\s{0,}(={1,2})\s{0,}["']([^"'\n]+)["']`, regexp2.None)
 
 func parseInput(input string) queries {
 	ret := queries{Raw: input}
@@ -49,10 +50,11 @@ func parseInput(input string) queries {
 	}, -1, -1)
 
 	for m != nil {
-		if m.GroupCount() != 3 {
+		if m.GroupCount() != 4 {
 			continue
 		}
-		ret.Groups = append(ret.Groups, query{m.Groups()[1].String(), m.Groups()[2].String()})
+		ret.Groups = append(ret.Groups, query{
+			m.Groups()[1].String(), m.Groups()[2].String(), m.Groups()[3].String()})
 		m, err = parsePat.FindNextMatch(m)
 		if err != nil {
 			break

@@ -51,6 +51,8 @@ func (f Quake) Query(session *sources.Session, query interface{}) (chan sources.
 		}
 		for _, q := range k.DSL {
 			str := q.Expr
+			str = strings.ReplaceAll(str, "&&", "AND")
+			str = strings.ReplaceAll(str, "||", "OR")
 			for i, g := range q.Groups {
 				dsl := f.parseDSL(g.Key, g.Value)
 				if dsl == "" {
@@ -90,10 +92,10 @@ func (f Quake) parseDSL(k, v string) string {
 		return fmt.Sprintf(`favicon:"%s"`, v)
 	case "cert":
 		return fmt.Sprintf(`cert:"%s"`, v)
-	//case "title":
-	//return fmt.Sprintf(`title="%s"`, v)
-	//case "body":
-	//return fmt.Sprintf(`body="%s"`, v)
+	case "title":
+		return fmt.Sprintf(`title:"%s"`, v)
+	case "body":
+		return fmt.Sprintf(`body:"%s"`, v)
 	default:
 		return ""
 	}

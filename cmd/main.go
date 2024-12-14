@@ -79,7 +79,7 @@ func main() {
 					}
 				}
 			}
-			fmt.Printf("[%s] %s %s\n"+result.Prompt, result.Source, result.PrettyPrint(), result.Title)
+			fmt.Printf("[%s] %s %s\n", result.Source, result.PrettyPrint(), result.Title)
 		}
 	}
 
