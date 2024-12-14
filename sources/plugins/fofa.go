@@ -51,6 +51,9 @@ func (f Fofa) Query(session *sources.Session, query interface{}) (chan sources.R
 		for _, domain := range k.Domain {
 			f.queryDomain(ctx, domain)
 		}
+		for _, q := range k.Icons {
+			f.queryIcon(ctx, q.Mmh3)
+		}
 		for _, q := range k.DSL {
 			str := q.Expr
 			for i, g := range q.Groups {
@@ -78,6 +81,13 @@ func (f Fofa) queryDomain(ctx context.Context, domain string) {
 		return
 	}
 	f.search(ctx, f.parseDSL("domain", "=", domain), domain)
+}
+
+func (f Fofa) queryIcon(ctx context.Context, hash string) {
+	if len(hash) == 0 {
+		return
+	}
+	f.search(ctx, f.parseDSL("icon.mmh3", "==", hash), hash)
 }
 
 func (f Fofa) parseDSL(k, s, v string) string {

@@ -21,6 +21,8 @@ var (
 	ip         string
 	domain     string
 	query      string
+	md5_str    string
+	mmh3_str   string
 	configPath string
 	output     string
 )
@@ -30,6 +32,8 @@ func init() {
 	flag.StringVar(&ip, "ip", "", "IP")
 	flag.StringVar(&domain, "domain", "", "Domain")
 	flag.StringVar(&query, "q", "", "Example: title=\"Harbor\"")
+	flag.StringVar(&md5_str, "md5", "", "Favicon md5")
+	flag.StringVar(&mmh3_str, "mmh3", "", "Favicon mmh3")
 	flag.StringVar(&configPath, "config", "config.yaml", "config file path")
 	flag.StringVar(&output, "oX", "", "output filename")
 	flag.Parse()
@@ -46,6 +50,7 @@ func main() {
 		Query: options.Keyword{
 			IP:     []string{ip},
 			Domain: []string{domain},
+			Icons:  []options.Icon{{Md5: md5_str, Mmh3: mmh3_str}},
 			DSL:    options.NewDslSlice(query),
 		},
 		Timeout: 20,

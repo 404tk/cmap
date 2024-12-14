@@ -49,6 +49,9 @@ func (f Quake) Query(session *sources.Session, query interface{}) (chan sources.
 		for _, domain := range k.Domain {
 			f.queryDomain(ctx, domain)
 		}
+		for _, q := range k.Icons {
+			f.queryIcon(ctx, q.Md5)
+		}
 		for _, q := range k.DSL {
 			str := q.Expr
 			str = strings.ReplaceAll(str, "&&", "AND")
@@ -80,6 +83,13 @@ func (f Quake) queryDomain(ctx context.Context, domain string) {
 		return
 	}
 	f.search(ctx, f.parseDSL("domain", domain), domain)
+}
+
+func (f Quake) queryIcon(ctx context.Context, hash string) {
+	if len(hash) == 0 {
+		return
+	}
+	f.search(ctx, f.parseDSL("icon.md5", hash), hash)
 }
 
 func (f Quake) parseDSL(k, v string) string {

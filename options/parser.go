@@ -10,7 +10,13 @@ import (
 type Keyword struct {
 	IP     []string
 	Domain []string
+	Icons  []Icon
 	DSL    []queries
+}
+
+type Icon struct {
+	Md5  string
+	Mmh3 string
 }
 
 type queries struct {
@@ -19,12 +25,15 @@ type queries struct {
 	Expr   string
 }
 
-func NewDslSlice(input string) []queries {
-	q := parseInput(input)
-	if len(q.Groups) > 0 {
-		return []queries{q}
+func NewDslSlice(input ...string) []queries {
+	ret := []queries{}
+	for _, i := range input {
+		q := parseInput(i)
+		if len(q.Groups) > 0 {
+			ret = append(ret, q)
+		}
 	}
-	return []queries{}
+	return ret
 }
 
 type query struct {

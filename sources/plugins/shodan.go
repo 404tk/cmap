@@ -53,6 +53,9 @@ func (f Shodan) Query(session *sources.Session, query interface{}) (chan sources
 		for _, domain := range k.Domain {
 			f.queryDomain(ctx, domain)
 		}
+		for _, q := range k.Icons {
+			f.queryIcon(ctx, q.Mmh3)
+		}
 		for _, q := range k.DSL {
 			str := q.Expr
 			if strings.Contains(str, "||") {
@@ -90,6 +93,13 @@ func (f Shodan) queryDomain(ctx context.Context, domain string) {
 		return
 	}
 	f.search(ctx, f.parseDSL("domain", domain), domain)
+}
+
+func (f Shodan) queryIcon(ctx context.Context, hash string) {
+	if len(hash) == 0 {
+		return
+	}
+	f.search(ctx, f.parseDSL("icon.mmh3", hash), hash)
 }
 
 func (f Shodan) parseDSL(k, v string) string {
