@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +20,8 @@ const (
 )
 
 type Fofa struct {
-	auth    config.FofaAuth
+	Email   string
+	Key     string
 	session *sources.Session
 	results chan sources.Result
 }
@@ -33,7 +35,13 @@ func (f Fofa) Query(session *sources.Session, query interface{}) (chan sources.R
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
-	f.auth = apikey.(config.FofaAuth)
+	parts := strings.Split(*apikey, ":")
+	if len(parts) > 1 {
+		f.Email = parts[0]
+		f.Key = parts[1]
+	} else {
+		return nil, errors.New("Fofa key parse failed")
+	}
 	f.session = session
 	f.results = make(chan sources.Result)
 
@@ -132,7 +140,7 @@ func (f Fofa) search(ctx context.Context, query, prompt string) {
 		}
 		qbase64 := base64.StdEncoding.EncodeToString([]byte(query))
 		req.Query = fmt.Sprintf("mail=%s&key=%s&qbase64=%s&fields=%s&page=%d&size=%d",
-			f.auth.Email, f.auth.Key, qbase64, FofaFields, page, FofaSize)
+			f.Email, f.Key, qbase64, FofaFields, page, FofaSize)
 		request, err := req.Request()
 		if err != nil {
 			f.results <- sources.Result{Source: f.Name(), Error: err}
@@ -150,7 +158,7 @@ func (f Fofa) search(ctx context.Context, query, prompt string) {
 			return
 		}
 		if fofaResponse.Error {
-			f.results <- sources.Result{Source: f.Name(), Error: fmt.Errorf(fofaResponse.ErrMsg)}
+			f.results <- sources.Result{Source: f.Name(), Error: errors.New(fofaResponse.ErrMsg)}
 			return
 		}
 

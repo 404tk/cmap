@@ -53,7 +53,7 @@ func parseInput(input string) queries {
 	}
 
 	index := 0
-	ret.Expr, err = parsePat.ReplaceFunc(input, func(m regexp2.Match) string {
+	ret.Expr, _ = parsePat.ReplaceFunc(input, func(m regexp2.Match) string {
 		defer func() { index += 1 }()
 		return fmt.Sprintf("[%d]", index)
 	}, -1, -1)

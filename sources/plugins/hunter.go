@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -32,7 +33,7 @@ func (f Hunter) Query(session *sources.Session, query interface{}) (chan sources
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
-	f.apikey = apikey.(string)
+	f.apikey = *apikey
 	f.session = session
 	f.results = make(chan sources.Result)
 
@@ -163,7 +164,7 @@ func (f Hunter) search(ctx context.Context, query, prompt string) {
 			return
 		}
 		if hunterResponse.Code != 200 {
-			f.results <- sources.Result{Source: f.Name(), Error: fmt.Errorf(hunterResponse.Msg)}
+			f.results <- sources.Result{Source: f.Name(), Error: errors.New(hunterResponse.Msg)}
 			return
 		}
 

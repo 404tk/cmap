@@ -35,7 +35,7 @@ func (f Shodan) Query(session *sources.Session, query interface{}) (chan sources
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
-	f.apikey = apikey.(string)
+	f.apikey = *apikey
 	f.session = session
 	f.results = make(chan sources.Result)
 

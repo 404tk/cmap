@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -31,7 +32,7 @@ func (f Quake) Query(session *sources.Session, query interface{}) (chan sources.
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
-	f.apikey = apikey.(string)
+	f.apikey = *apikey
 	f.session = session
 	f.results = make(chan sources.Result)
 
@@ -166,7 +167,7 @@ func (f Quake) search(ctx context.Context, query, prompt string) {
 			return
 		}
 		if c, _ := json.Marshal(response.Code); string(c) != "0" {
-			f.results <- sources.Result{Source: f.Name(), Error: fmt.Errorf(response.Message)}
+			f.results <- sources.Result{Source: f.Name(), Error: errors.New(response.Message)}
 			return
 		}
 

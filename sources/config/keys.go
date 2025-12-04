@@ -4,30 +4,31 @@ import (
 	"math/rand"
 )
 
+const (
+	PlatformFofa   = "fofa"
+	PlatformHunter = "hunter"
+	PlatformQuake  = "quake"
+	PlatformShodan = "shodan"
+)
+
 var apikeys = make(map[string]interface{})
 
-type FofaAuth struct {
-	Email string
-	Key   string
+// SetKeys 设置 API 密钥
+func SetKeys(platform string, keys []string) {
+	apikeys[platform] = keys
 }
 
-func RandomKey(name string) interface{} {
+// RandomKey 随机返回一个 API 密钥
+func RandomKey(name string) *string {
 	v, ok := apikeys[name]
 	if !ok {
 		return nil
 	}
 
-	if name == "fofa" {
-		auths := v.([]FofaAuth)
-		if len(auths) < 1 {
-			return nil
-		}
-		return auths[rand.Intn(len(auths))]
-	} else {
-		keys := v.([]string)
-		if len(keys) < 1 {
-			return nil
-		}
-		return keys[rand.Intn(len(keys))]
+	keys := v.([]string)
+	if len(keys) < 1 {
+		return nil
 	}
+
+	return &keys[rand.Intn(len(keys))]
 }

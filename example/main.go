@@ -11,10 +11,12 @@ import (
 	_ "github.com/404tk/cmap/sources/plugins"
 )
 
-var configPath = "config.yaml"
-
 func main() {
-	config.InitConfig(configPath)
+	config.SetKeys(config.PlatformFofa, []string{"user@gmail.com:fofa_key"})
+	config.SetKeys(config.PlatformHunter, []string{})
+	config.SetKeys(config.PlatformQuake, []string{})
+	config.SetKeys(config.PlatformShodan, []string{})
+
 	opts := &options.Options{
 		Agents: []string{"fofa", "quake", "hunter", "shodan"},
 		Query: options.Keyword{

@@ -11,7 +11,6 @@ import (
 	"github.com/404tk/cmap/cmd/excel"
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
-	"github.com/404tk/cmap/sources/config"
 	_ "github.com/404tk/cmap/sources/plugins"
 	"github.com/404tk/cmap/utils"
 )
@@ -44,7 +43,7 @@ func init() {
 }
 
 func main() {
-	config.InitConfig(configPath)
+	loadConfig(configPath)
 	opts := &options.Options{
 		Agents: strings.Split(agent, ","),
 		Query: options.Keyword{
