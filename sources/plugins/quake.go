@@ -192,7 +192,7 @@ func (f Quake) search(ctx context.Context, query, prompt string) {
 		}
 
 		for _, res := range data {
-			result := sources.Result{Source: f.Name()}
+			result := sources.Result{Source: f.Name(), Prompt: prompt}
 			result.IP = res.IP
 			result.Port = fmt.Sprintf("%d/%s", res.Port, res.Transport)
 			result.Protocol = res.Service.Name
@@ -206,7 +206,6 @@ func (f Quake) search(ctx context.Context, query, prompt string) {
 			} else if result.Protocol == "http/ssl" {
 				result.Url = fmt.Sprintf("https://%s", result.IpPort())
 			}
-			result.Prompt = prompt
 
 			f.results <- result
 		}

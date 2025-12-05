@@ -169,7 +169,7 @@ func (f Hunter) search(ctx context.Context, query, prompt string) {
 		}
 
 		for _, res := range hunterResponse.Data.Arr {
-			result := sources.Result{Source: f.Name()}
+			result := sources.Result{Source: f.Name(), Prompt: prompt}
 			result.IP = res.IP
 			result.Port = fmt.Sprintf("%d/%s", res.Port, res.BaseProtocol)
 			result.Protocol = res.Protocol
@@ -182,7 +182,6 @@ func (f Hunter) search(ctx context.Context, query, prompt string) {
 			if err == nil {
 				result.LastUpdate = parsedTime.Format(time.DateTime)
 			}
-			result.Prompt = prompt
 			f.results <- result
 		}
 

@@ -172,7 +172,7 @@ func (f Shodan) search(ctx context.Context, query, prompt string) {
 		}
 
 		for _, res := range shodanResponse.Results {
-			result := sources.Result{Source: f.Name()}
+			result := sources.Result{Source: f.Name(), Prompt: prompt}
 			if len(res.IP) == 0 {
 				continue
 
@@ -197,7 +197,6 @@ func (f Shodan) search(ctx context.Context, query, prompt string) {
 			if err == nil {
 				result.LastUpdate = parsedTime.Format(time.DateTime)
 			}
-			result.Prompt = prompt
 			f.results <- result
 		}
 

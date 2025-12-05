@@ -5,10 +5,11 @@ import (
 )
 
 const (
-	PlatformFofa   = "fofa"
-	PlatformHunter = "hunter"
-	PlatformQuake  = "quake"
-	PlatformShodan = "shodan"
+	PlatformFofa    = "fofa"
+	PlatformHunter  = "hunter"
+	PlatformQuake   = "quake"
+	PlatformShodan  = "shodan"
+	PlatformZoomeye = "zoomeye"
 )
 
 var apikeys = make(map[string]interface{})

@@ -163,7 +163,7 @@ func (f Fofa) search(ctx context.Context, query, prompt string) {
 		}
 
 		for _, fofaResult := range fofaResponse.Results {
-			result := sources.Result{Source: f.Name()}
+			result := sources.Result{Source: f.Name(), Prompt: prompt}
 			result.IP = fofaResult[0]
 			result.Port = fmt.Sprintf("%s/%s", fofaResult[1], fofaResult[2])
 			result.Protocol = fofaResult[3]
@@ -179,7 +179,6 @@ func (f Fofa) search(ctx context.Context, query, prompt string) {
 			}
 			result.Fingerprint = fofaResult[7]
 			result.LastUpdate = fofaResult[8]
-			result.Prompt = prompt
 			f.results <- result
 		}
 
