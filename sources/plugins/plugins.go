@@ -12,7 +12,7 @@ import (
 type Plugin interface {
 	Name() string
 	QueryAsset(context.Context, *sources.Session, interface{}) (chan sources.Result, error)
-	QuerySubdomain(context.Context, *sources.Session, string) ([]string, error)
+	QuerySubdomain(context.Context, *sources.Session, string) (chan string, error)
 	VerifyKeys(*sources.Session) []config.KeyStatus
 }
 

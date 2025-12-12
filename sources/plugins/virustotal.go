@@ -31,80 +31,77 @@ type vtResponse struct {
 }
 
 // QuerySubdomain 子域名收集
-func (f VirusTotal) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+func (f VirusTotal) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) (chan string, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
 
-	req := &sources.Req{
-		Schema:   "https",
-		Endpoint: "www.virustotal.com",
-		Path:     fmt.Sprintf("/api/v3/domains/%s/subdomains", domain),
-		Method:   "GET",
-		Header:   map[string]string{"x-apikey": *apikey},
-		Query:    "limit=40",
-	}
+	results := make(chan string)
+	go func() {
+		defer close(results)
 
-	res := make(map[string]struct{})
-	var lastErr error
-
-	for {
-		select {
-		case <-ctx.Done():
-			goto done
-		default:
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "www.virustotal.com",
+			Path:     fmt.Sprintf("/api/v3/domains/%s/subdomains", domain),
+			Method:   "GET",
+			Header:   map[string]string{"x-apikey": *apikey},
+			Query:    "limit=40",
 		}
 
-		request, err := req.Request()
-		if err != nil {
-			lastErr = err
-			break
-		}
-		resp, err := session.Do(request, f.Name())
-		if err != nil {
-			lastErr = err
-			break
-		}
+		seen := make(map[string]struct{})
 
-		var vtResp vtResponse
-		if err := json.NewDecoder(resp.Body).Decode(&vtResp); err != nil {
-			resp.Body.Close()
-			lastErr = err
-			break
-		}
-		resp.Body.Close()
-
-		if vtResp.Error.Code != "" && vtResp.Error.Code != "NotFoundError" {
-			lastErr = fmt.Errorf("API error: %s", vtResp.Error.Code)
-			break
-		}
-
-		for _, r := range vtResp.Data {
-			sub := r.ID
-			if len(sub) > 0 && sub != domain && strings.HasSuffix(sub, "."+domain) {
-				res[sub] = struct{}{}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
-		}
 
-		// 翻页
-		if vtResp.Links.Next == "" {
-			break
-		}
-		u, err := url.Parse(vtResp.Links.Next)
-		if err != nil {
-			lastErr = err
-			break
-		}
-		req.Query = u.Query().Encode()
-	}
+			request, err := req.Request()
+			if err != nil {
+				return
+			}
+			resp, err := session.Do(request, f.Name())
+			if err != nil {
+				return
+			}
 
-done:
-	result := make([]string, 0, len(res))
-	for k := range res {
-		result = append(result, k)
-	}
-	return result, lastErr
+			var vtResp vtResponse
+			if err := json.NewDecoder(resp.Body).Decode(&vtResp); err != nil {
+				resp.Body.Close()
+				return
+			}
+			resp.Body.Close()
+
+			if vtResp.Error.Code != "" && vtResp.Error.Code != "NotFoundError" {
+				return
+			}
+
+			for _, r := range vtResp.Data {
+				sub := r.ID
+				if len(sub) > 0 && sub != domain && strings.HasSuffix(sub, "."+domain) {
+					if _, ok := seen[sub]; !ok {
+						seen[sub] = struct{}{}
+						results <- sub
+					}
+				}
+			}
+
+			// 翻页
+			if vtResp.Links.Next == "" {
+				return
+			}
+			u, err := url.Parse(vtResp.Links.Next)
+			if err != nil {
+				return
+			}
+			req.Query = u.Query().Encode()
+		}
+	}()
+
+	return results, nil
 }
 
 // QueryAsset 不支持资产测绘

@@ -17,54 +17,63 @@ func (f AlienVault) Name() string {
 }
 
 // QuerySubdomain 子域名收集
-func (f AlienVault) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+func (f AlienVault) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) (chan string, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
 
-	req := &sources.Req{
-		Schema:   "https",
-		Endpoint: "otx.alienvault.com",
-		Path:     fmt.Sprintf("/api/v1/indicators/domain/%s/passive_dns", domain),
-		Method:   "GET",
-		Header:   map[string]string{"X-OTX-API-KEY": *apikey},
-	}
+	results := make(chan string)
+	go func() {
+		defer close(results)
 
-	request, err := req.Request()
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := session.Do(request, f.Name())
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	type avResponse struct {
-		PassiveDNS []struct {
-			Hostname string `json:"hostname"`
-		} `json:"passive_dns"`
-	}
-	var avResp avResponse
-	if err := json.NewDecoder(resp.Body).Decode(&avResp); err != nil {
-		return nil, err
-	}
-
-	res := make(map[string]struct{})
-	for _, r := range avResp.PassiveDNS {
-		sub := r.Hostname
-		if strings.HasSuffix(sub, "."+domain) {
-			res[sub] = struct{}{}
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "otx.alienvault.com",
+			Path:     fmt.Sprintf("/api/v1/indicators/domain/%s/passive_dns", domain),
+			Method:   "GET",
+			Header:   map[string]string{"X-OTX-API-KEY": *apikey},
 		}
-	}
 
-	result := make([]string, 0, len(res))
-	for k := range res {
-		result = append(result, k)
-	}
-	return result, nil
+		request, err := req.Request()
+		if err != nil {
+			return
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+
+		type avResponse struct {
+			PassiveDNS []struct {
+				Hostname string `json:"hostname"`
+			} `json:"passive_dns"`
+		}
+		var avResp avResponse
+		if err := json.NewDecoder(resp.Body).Decode(&avResp); err != nil {
+			return
+		}
+
+		seen := make(map[string]struct{})
+		for _, r := range avResp.PassiveDNS {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			sub := r.Hostname
+			if strings.HasSuffix(sub, "."+domain) {
+				if _, ok := seen[sub]; !ok {
+					seen[sub] = struct{}{}
+					results <- sub
+				}
+			}
+		}
+	}()
+
+	return results, nil
 }
 
 // QueryAsset 不支持资产测绘

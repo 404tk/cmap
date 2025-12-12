@@ -195,7 +195,7 @@ func (f Hunter) search(ctx context.Context, query, prompt string) {
 }
 
 // QuerySubdomain 不支持子域名收集
-func (f Hunter) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+func (f Hunter) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) (chan string, error) {
 	return nil, nil
 }
 

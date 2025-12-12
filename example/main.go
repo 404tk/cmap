@@ -46,7 +46,7 @@ func subdomainExample() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	subs, err := svc.ExecuteSubdomain(ctx)
+	subs, err := svc.ExecuteSubdomainUnique(ctx)
 	if err != nil {
 		panic(err)
 	}

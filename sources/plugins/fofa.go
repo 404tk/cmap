@@ -195,7 +195,7 @@ func init() {
 }
 
 // QuerySubdomain 子域名收集
-func (f Fofa) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+func (f Fofa) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) (chan string, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
@@ -206,57 +206,66 @@ func (f Fofa) QuerySubdomain(ctx context.Context, session *sources.Session, doma
 	}
 	email, key := parts[0], parts[1]
 
-	query := fmt.Sprintf(`domain="%s"`, domain)
-	qbase64 := base64.StdEncoding.EncodeToString([]byte(query))
-	req := &sources.Req{
-		Schema:   "https",
-		Endpoint: "fofa.info",
-		Path:     "/api/v1/search/all",
-		Method:   "GET",
-		Header:   map[string]string{},
-		Query: fmt.Sprintf("email=%s&key=%s&size=10000&qbase64=%s&fields=host",
-			email, key, qbase64),
-	}
-	request, err := req.Request()
-	if err != nil {
-		return nil, err
-	}
-	resp, err := session.Do(request, f.Name())
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	results := make(chan string)
+	go func() {
+		defer close(results)
 
-	// 单字段查询返回 []string 而非 [][]string
-	type fofaSingleFieldResponse struct {
-		Error   bool     `json:"error"`
-		ErrMsg  string   `json:"errmsg"`
-		Results []string `json:"results"`
-	}
-	fofaResponse := &fofaSingleFieldResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(fofaResponse); err != nil {
-		return nil, err
-	}
-	if fofaResponse.Error {
-		return nil, fmt.Errorf("API error: %s", fofaResponse.ErrMsg)
-	}
-
-	res := make(map[string]struct{})
-	for _, sub := range fofaResponse.Results {
-		if strings.HasPrefix(sub, "https://") || strings.HasPrefix(sub, "http://") {
-			sub = strings.Split(sub, "://")[1]
+		query := fmt.Sprintf(`domain="%s"`, domain)
+		qbase64 := base64.StdEncoding.EncodeToString([]byte(query))
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "fofa.info",
+			Path:     "/api/v1/search/all",
+			Method:   "GET",
+			Header:   map[string]string{},
+			Query: fmt.Sprintf("email=%s&key=%s&size=10000&qbase64=%s&fields=host",
+				email, key, qbase64),
 		}
-		sub = strings.Split(sub, ":")[0]
-		if strings.HasSuffix(sub, "."+domain) {
-			res[sub] = struct{}{}
+		request, err := req.Request()
+		if err != nil {
+			return
 		}
-	}
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
 
-	result := make([]string, 0, len(res))
-	for k := range res {
-		result = append(result, k)
-	}
-	return result, nil
+		// 单字段查询返回 []string 而非 [][]string
+		type fofaSingleFieldResponse struct {
+			Error   bool     `json:"error"`
+			ErrMsg  string   `json:"errmsg"`
+			Results []string `json:"results"`
+		}
+		fofaResponse := &fofaSingleFieldResponse{}
+		if err := json.NewDecoder(resp.Body).Decode(fofaResponse); err != nil {
+			return
+		}
+		if fofaResponse.Error {
+			return
+		}
+
+		seen := make(map[string]struct{})
+		for _, sub := range fofaResponse.Results {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			if strings.HasPrefix(sub, "https://") || strings.HasPrefix(sub, "http://") {
+				sub = strings.Split(sub, "://")[1]
+			}
+			sub = strings.Split(sub, ":")[0]
+			if strings.HasSuffix(sub, "."+domain) {
+				if _, ok := seen[sub]; !ok {
+					seen[sub] = struct{}{}
+					results <- sub
+				}
+			}
+		}
+	}()
+
+	return results, nil
 }
 
 // VerifyKeys 验证 FOFA API 密钥

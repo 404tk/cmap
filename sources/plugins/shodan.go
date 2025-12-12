@@ -215,74 +215,73 @@ func init() {
 }
 
 // QuerySubdomain 子域名收集
-func (f Shodan) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+func (f Shodan) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) (chan string, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
 	}
 
-	req := &sources.Req{
-		Schema:   "https",
-		Endpoint: "api.shodan.io",
-		Path:     fmt.Sprintf("/dns/domain/%s", domain),
-		Method:   "GET",
-		Header:   map[string]string{"User-Agent": "curl/8.7.1"},
-	}
+	results := make(chan string)
+	go func() {
+		defer close(results)
 
-	page := 1
-	res := make(map[string]struct{})
-	var lastErr error
-
-	for {
-		select {
-		case <-ctx.Done():
-			goto done
-		default:
-		}
-		req.Query = fmt.Sprintf("key=%s&page=%d", *apikey, page)
-		request, err := req.Request()
-		if err != nil {
-			lastErr = err
-			break
-		}
-		resp, err := session.Do(request, f.Name())
-		if err != nil {
-			lastErr = err
-			break
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "api.shodan.io",
+			Path:     fmt.Sprintf("/dns/domain/%s", domain),
+			Method:   "GET",
+			Header:   map[string]string{"User-Agent": "curl/8.7.1"},
 		}
 
-		type shodanDNS struct {
-			Domain     string   `json:"domain"`
-			Subdomains []string `json:"subdomains"`
-			More       bool     `json:"more"`
-		}
-		var dnsResp shodanDNS
-		if err := json.NewDecoder(resp.Body).Decode(&dnsResp); err != nil {
-			resp.Body.Close()
-			lastErr = err
-			break
-		}
-		resp.Body.Close()
+		page := 1
+		seen := make(map[string]struct{})
 
-		for _, sub := range dnsResp.Subdomains {
-			fullSub := sub + "." + dnsResp.Domain
-			if strings.HasSuffix(fullSub, "."+domain) {
-				res[fullSub] = struct{}{}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
-		}
+			req.Query = fmt.Sprintf("key=%s&page=%d", *apikey, page)
+			request, err := req.Request()
+			if err != nil {
+				return
+			}
+			resp, err := session.Do(request, f.Name())
+			if err != nil {
+				return
+			}
 
-		if !dnsResp.More {
-			break
-		}
-		page++
-	}
+			type shodanDNS struct {
+				Domain     string   `json:"domain"`
+				Subdomains []string `json:"subdomains"`
+				More       bool     `json:"more"`
+			}
+			var dnsResp shodanDNS
+			if err := json.NewDecoder(resp.Body).Decode(&dnsResp); err != nil {
+				resp.Body.Close()
+				return
+			}
+			resp.Body.Close()
 
-done:
-	result := make([]string, 0, len(res))
-	for k := range res {
-		result = append(result, k)
-	}
-	return result, lastErr
+			for _, sub := range dnsResp.Subdomains {
+				fullSub := sub + "." + dnsResp.Domain
+				if strings.HasSuffix(fullSub, "."+domain) {
+					if _, ok := seen[fullSub]; !ok {
+						seen[fullSub] = struct{}{}
+						results <- fullSub
+					}
+				}
+			}
+
+			if !dnsResp.More {
+				return
+			}
+			page++
+		}
+	}()
+
+	return results, nil
 }
 
 // VerifyKeys 验证 Shodan API 密钥

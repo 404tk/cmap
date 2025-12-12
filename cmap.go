@@ -96,8 +96,8 @@ func (s *Service) ExecuteAsset(ctx context.Context) (<-chan sources.Result, erro
 	return megaChan, nil
 }
 
-// ExecuteSubdomain 执行子域名收集，返回去重后的子域名列表
-func (s *Service) ExecuteSubdomain(ctx context.Context) ([]string, error) {
+// ExecuteSubdomain 执行子域名收集，返回流式 channel
+func (s *Service) ExecuteSubdomain(ctx context.Context) (<-chan string, error) {
 	if err := s.nilCheck(); err != nil {
 		return nil, err
 	}
@@ -107,40 +107,76 @@ func (s *Service) ExecuteSubdomain(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("no domain specified in query")
 	}
 
-	unique := make(map[string]struct{})
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+	megaChan := make(chan string, DefaultChannelBuffSize)
+	wg := &sync.WaitGroup{}
 
 	for _, plugin := range s.Plugins {
 		for _, domain := range k.Domain {
+			ch, err := plugin.QuerySubdomain(ctx, s.Session, domain)
+			if err != nil {
+				log.Printf("[%s] %v\n", plugin.Name(), err)
+				continue
+			}
+			if ch == nil {
+				// 该插件不支持子域名收集
+				continue
+			}
 			wg.Add(1)
-			go func(p plugins.Plugin, d string) {
+			go func(source chan string, relay chan string, ctx context.Context) {
 				defer wg.Done()
-				subs, err := p.QuerySubdomain(ctx, s.Session, d)
-				if err != nil {
-					log.Printf("[%s] %v\n", p.Name(), err)
-					return
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case sub, ok := <-source:
+						if !ok {
+							return
+						}
+						relay <- sub
+					}
 				}
-				if len(subs) == 0 {
-					return
-				}
-				mu.Lock()
-				for _, sub := range subs {
-					unique[sub] = struct{}{}
-				}
-				mu.Unlock()
-				log.Printf("[%s] found %d subdomains for %s\n", p.Name(), len(subs), d)
-			}(plugin, domain)
+			}(ch, megaChan, ctx)
 		}
 	}
 
-	wg.Wait()
+	go func(wg *sync.WaitGroup, megaChan chan string) {
+		wg.Wait()
+		close(megaChan)
+	}(wg, megaChan)
 
-	result := make([]string, 0, len(unique))
-	for sub := range unique {
-		result = append(result, sub)
+	return megaChan, nil
+}
+
+// ExecuteSubdomainUnique 执行子域名收集，返回去重后的子域名列表
+// 当 ctx 超时时返回已收集到的结果
+func (s *Service) ExecuteSubdomainUnique(ctx context.Context) ([]string, error) {
+	ch, err := s.ExecuteSubdomain(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+
+	unique := make(map[string]struct{})
+	for {
+		select {
+		case <-ctx.Done():
+			// 超时，返回已收集到的结果
+			result := make([]string, 0, len(unique))
+			for sub := range unique {
+				result = append(result, sub)
+			}
+			return result, nil
+		case sub, ok := <-ch:
+			if !ok {
+				// channel 关闭，所有结果已收集完毕
+				result := make([]string, 0, len(unique))
+				for sub := range unique {
+					result = append(result, sub)
+				}
+				return result, nil
+			}
+			unique[sub] = struct{}{}
+		}
+	}
 }
 
 // ExecuteAssetWithCallback 资产测绘带回调
