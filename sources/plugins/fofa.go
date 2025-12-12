@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
@@ -30,7 +29,7 @@ func (f Fofa) Name() string {
 	return "fofa"
 }
 
-func (f Fofa) Query(session *sources.Session, query interface{}) (chan sources.Result, error) {
+func (f Fofa) QueryAsset(ctx context.Context, session *sources.Session, query interface{}) (chan sources.Result, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
@@ -44,10 +43,6 @@ func (f Fofa) Query(session *sources.Session, query interface{}) (chan sources.R
 	}
 	f.session = session
 	f.results = make(chan sources.Result)
-
-	// 查询总时长限制10分钟
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
 
 	k := query.(options.Keyword)
 	go func() {
@@ -197,4 +192,69 @@ func (f Fofa) search(ctx context.Context, query, prompt string) {
 
 func init() {
 	registerPlugin("fofa", Fofa{})
+}
+
+// QuerySubdomain 子域名收集
+func (f Fofa) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+	apikey := config.RandomKey(f.Name())
+	if apikey == nil {
+		return nil, fmt.Errorf("empty %s keys", f.Name())
+	}
+	parts := strings.Split(*apikey, ":")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid %s key format", f.Name())
+	}
+	email, key := parts[0], parts[1]
+
+	query := fmt.Sprintf(`domain="%s"`, domain)
+	qbase64 := base64.StdEncoding.EncodeToString([]byte(query))
+	req := &sources.Req{
+		Schema:   "https",
+		Endpoint: "fofa.info",
+		Path:     "/api/v1/search/all",
+		Method:   "GET",
+		Header:   map[string]string{},
+		Query: fmt.Sprintf("email=%s&key=%s&size=10000&qbase64=%s&fields=host",
+			email, key, qbase64),
+	}
+	request, err := req.Request()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := session.Do(request, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// 单字段查询返回 []string 而非 [][]string
+	type fofaSingleFieldResponse struct {
+		Error   bool     `json:"error"`
+		ErrMsg  string   `json:"errmsg"`
+		Results []string `json:"results"`
+	}
+	fofaResponse := &fofaSingleFieldResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(fofaResponse); err != nil {
+		return nil, err
+	}
+	if fofaResponse.Error {
+		return nil, fmt.Errorf("API error: %s", fofaResponse.ErrMsg)
+	}
+
+	res := make(map[string]struct{})
+	for _, sub := range fofaResponse.Results {
+		if strings.HasPrefix(sub, "https://") || strings.HasPrefix(sub, "http://") {
+			sub = strings.Split(sub, "://")[1]
+		}
+		sub = strings.Split(sub, ":")[0]
+		if strings.HasSuffix(sub, "."+domain) {
+			res[sub] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(res))
+	for k := range res {
+		result = append(result, k)
+	}
+	return result, nil
 }

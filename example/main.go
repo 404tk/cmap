@@ -3,54 +3,96 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/404tk/cmap"
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
 	"github.com/404tk/cmap/sources/config"
-	_ "github.com/404tk/cmap/sources/plugins"
 )
 
 func main() {
+	// 设置凭据
 	config.SetKeys(config.PlatformFofa, []string{"user@gmail.com:fofa_key"})
-	config.SetKeys(config.PlatformHunter, []string{})
-	config.SetKeys(config.PlatformQuake, []string{})
-	config.SetKeys(config.PlatformShodan, []string{})
+	config.SetKeys(config.PlatformQuake, []string{"quake_token"})
+	config.SetKeys(config.PlatformShodan, []string{"shodan_key"})
+	config.SetKeys(config.PlatformHunter, []string{"hunter_key"})
+	config.SetKeys(config.PlatformVirusTotal, []string{"vt_key"})
 
+	// 示例1：子域名收集
+	subdomainExample()
+
+	// 示例2：资产测绘
+	assetExample()
+}
+
+// subdomainExample 子域名收集示例
+func subdomainExample() {
+	fmt.Println("=== 子域名收集 ===")
 	opts := &options.Options{
-		Agents: []string{"fofa", "quake", "hunter", "shodan"},
+		Agents: []string{"fofa", "shodan", "crtsh", "virustotal"},
 		Query: options.Keyword{
-			Domain: []string{"cnblogs.com"},
+			Domain: []string{"example.com"},
 		},
-		Timeout: 20,
+		Timeout: 20, // 单个请求超时
 	}
 
-	u, err := cmap.New(opts)
+	svc, err := cmap.New(opts)
 	if err != nil {
 		panic(err)
 	}
 
-	hashMap := make(map[string]bool)
-	result := func(result sources.Result) {
-		if result.Error != nil {
-			fmt.Printf("[%s] %v\n", result.Source, result.Error)
-		} else {
-			// 基于IP+端口进行去重
-			index := fmt.Sprintf("%s_%s", result.IP, result.Port)
-			if hashMap[index] {
-				return
-			}
-			hashMap[index] = true
-			// result.Url
-			fmt.Printf("[%s] %s %s\n", result.Source, result.PrettyPrint(), result.Title)
-		}
+	// 整体查询超时 5 分钟
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	subs, err := svc.ExecuteSubdomain(ctx)
+	if err != nil {
+		panic(err)
 	}
 
-	// Execute executes and returns a channel with all results
-	// ch , err := u.Execute(context.Background())
+	fmt.Printf("共发现 %d 个子域名:\n", len(subs))
+	for _, sub := range subs {
+		fmt.Println(sub)
+	}
+	fmt.Println()
+}
 
-	// Execute with Callback calls u.Execute() internally and abstracts channel handling logic
-	if err := u.ExecuteWithCallback(context.TODO(), result); err != nil {
+// assetExample 资产测绘示例
+func assetExample() {
+	fmt.Println("=== 资产测绘 ===")
+	opts := &options.Options{
+		Agents: []string{"fofa", "quake", "hunter", "shodan"},
+		Query: options.Keyword{
+			Domain: []string{"example.com"},
+		},
+		Timeout: 20, // 单个请求超时
+	}
+
+	svc, err := cmap.New(opts)
+	if err != nil {
+		panic(err)
+	}
+
+	// 整体查询超时 10 分钟
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	hashMap := make(map[string]bool)
+	callback := func(result sources.Result) {
+		if result.Error != nil {
+			fmt.Printf("[%s] %v\n", result.Source, result.Error)
+			return
+		}
+		index := fmt.Sprintf("%s_%s", result.IP, result.Port)
+		if hashMap[index] {
+			return
+		}
+		hashMap[index] = true
+		fmt.Printf("[%s] %s %s\n", result.Source, result.PrettyPrint(), result.Title)
+	}
+
+	if err := svc.ExecuteAssetWithCallback(ctx, callback); err != nil {
 		panic(err)
 	}
 }

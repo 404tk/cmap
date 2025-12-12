@@ -15,11 +15,14 @@ import (
 // DefaultRateLimits of all/most of sources are hardcoded by default to improve performance
 // engine is not present in default ratelimits then user given ratelimit from cli options is used
 var DefaultRateLimits = map[string]*ratelimit.Options{
-	"shodan":  {Key: "shodan", MaxCount: 1, Duration: time.Second},
-	"fofa":    {Key: "fofa", MaxCount: 1, Duration: time.Second},
-	"quake":   {Key: "quake", MaxCount: 1, Duration: time.Second},
-	"hunter":  {Key: "hunter", MaxCount: 15, Duration: time.Second},
-	"zoomeye": {Key: "zoomeye", MaxCount: 1, Duration: time.Second},
+	"shodan":     {Key: "shodan", MaxCount: 1, Duration: time.Second},
+	"fofa":       {Key: "fofa", MaxCount: 1, Duration: time.Second},
+	"quake":      {Key: "quake", MaxCount: 1, Duration: time.Second},
+	"hunter":     {Key: "hunter", MaxCount: 15, Duration: time.Minute},
+	"zoomeye":    {Key: "zoomeye", MaxCount: 1, Duration: time.Second},
+	"virustotal": {Key: "virustotal", MaxCount: 4, Duration: time.Minute},
+	"crtsh":      {Key: "crtsh", MaxCount: 1, Duration: time.Second},
+	"alienvault": {Key: "alienvault", MaxCount: 1, Duration: time.Second},
 }
 
 // Session handles session agent sessions
@@ -98,4 +101,20 @@ func (s *Session) Do(request *http.Request, source string) (*http.Response, erro
 		return resp, fmt.Errorf("unexpected status code %d received from %s", resp.StatusCode, requestURL)
 	}
 	return resp, nil
+}
+
+// DefaultClient 返回默认 HTTP 客户端（用于子域名收集等场景）
+func DefaultClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+			ResponseHeaderTimeout: 30 * time.Second,
+			Proxy:                 http.ProxyFromEnvironment,
+		},
+		Timeout: 30 * time.Second,
+	}
 }

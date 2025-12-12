@@ -28,7 +28,7 @@ func (f Zoomeye) Name() string {
 	return "zoomeye"
 }
 
-func (f Zoomeye) Query(session *sources.Session, query interface{}) (chan sources.Result, error) {
+func (f Zoomeye) QueryAsset(ctx context.Context, session *sources.Session, query interface{}) (chan sources.Result, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
@@ -36,10 +36,6 @@ func (f Zoomeye) Query(session *sources.Session, query interface{}) (chan source
 	f.apikey = *apikey
 	f.session = session
 	f.results = make(chan sources.Result)
-
-	// 查询总时长限制10分钟
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
 
 	k := query.(options.Keyword)
 	go func() {
@@ -195,7 +191,7 @@ func (f Zoomeye) search(ctx context.Context, query, prompt string) {
 
 		req := &sources.Req{
 			Schema:   "https",
-			Endpoint: "api.zoomeye.ai",
+			Endpoint: "api.zoomeye.org",
 			Path:     "/v2/search",
 			Method:   "POST",
 			Header: map[string]string{
@@ -296,4 +292,82 @@ func (f Zoomeye) search(ctx context.Context, query, prompt string) {
 
 func init() {
 	registerPlugin("zoomeye", Zoomeye{})
+}
+
+// QuerySubdomain 子域名收集（使用 domain/search 接口）
+func (f Zoomeye) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+	apikey := config.RandomKey(f.Name())
+	if apikey == nil {
+		return nil, fmt.Errorf("empty %s keys", f.Name())
+	}
+
+	req := &sources.Req{
+		Schema:   "https",
+		Endpoint: "api.zoomeye.org",
+		Path:     "/domain/search",
+		Method:   "GET",
+		Header:   map[string]string{"API-KEY": *apikey},
+	}
+
+	page := 1
+	var numberOfResults, total int
+	res := make(map[string]struct{})
+	var lastErr error
+
+	for {
+		select {
+		case <-ctx.Done():
+			goto done
+		default:
+		}
+		req.Query = fmt.Sprintf("q=%s&type=1&page=%d", domain, page)
+		request, err := req.Request()
+		if err != nil {
+			lastErr = err
+			break
+		}
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			lastErr = err
+			break
+		}
+
+		type zoomeyeDomain struct {
+			Total int `json:"total"`
+			List  []struct {
+				Name string `json:"name"`
+			} `json:"list"`
+		}
+		var dnsResp zoomeyeDomain
+		if err := json.NewDecoder(resp.Body).Decode(&dnsResp); err != nil {
+			resp.Body.Close()
+			lastErr = err
+			break
+		}
+		resp.Body.Close()
+
+		if total == 0 {
+			total = dnsResp.Total
+		}
+		numberOfResults += len(dnsResp.List)
+
+		for _, r := range dnsResp.List {
+			sub := r.Name
+			if strings.HasSuffix(sub, "."+domain) {
+				res[sub] = struct{}{}
+			}
+		}
+
+		if len(dnsResp.List) < 30 || numberOfResults >= total {
+			break
+		}
+		page++
+	}
+
+done:
+	result := make([]string, 0, len(res))
+	for k := range res {
+		result = append(result, k)
+	}
+	return result, lastErr
 }

@@ -1,14 +1,17 @@
 package plugins
 
 import (
+	"context"
 	"log"
 
 	"github.com/404tk/cmap/sources"
 )
 
+// Plugin 统一插件接口
 type Plugin interface {
 	Name() string
-	Query(*sources.Session, interface{}) (chan sources.Result, error)
+	QueryAsset(context.Context, *sources.Session, interface{}) (chan sources.Result, error)
+	QuerySubdomain(context.Context, *sources.Session, string) ([]string, error)
 }
 
 var Plugins = make(map[string]Plugin)

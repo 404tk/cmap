@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
@@ -27,7 +26,7 @@ func (f Quake) Name() string {
 	return "quake"
 }
 
-func (f Quake) Query(session *sources.Session, query interface{}) (chan sources.Result, error) {
+func (f Quake) QueryAsset(ctx context.Context, session *sources.Session, query interface{}) (chan sources.Result, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
@@ -35,10 +34,6 @@ func (f Quake) Query(session *sources.Session, query interface{}) (chan sources.
 	f.apikey = *apikey
 	f.session = session
 	f.results = make(chan sources.Result)
-
-	// 查询总时长限制10分钟
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
 
 	k := query.(options.Keyword)
 	go func() {
@@ -117,7 +112,8 @@ type QuakeRequest struct {
 	Size        int      `json:"size"`
 	Start       int      `json:"start"`
 	IgnoreCache bool     `json:"ignore_cache"`
-	Include     []string `json:"include"`
+	Include     []string `json:"include,omitempty"`
+	Exclude     []string `json:"exclude,omitempty"`
 }
 
 func (req *QuakeRequest) toString() string {
@@ -244,4 +240,74 @@ type QuakeResponse struct {
 
 func init() {
 	registerPlugin("quake", Quake{})
+}
+
+// QuerySubdomain 子域名收集
+func (f Quake) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+	apikey := config.RandomKey(f.Name())
+	if apikey == nil {
+		return nil, fmt.Errorf("empty %s keys", f.Name())
+	}
+
+	quakeRequest := &QuakeRequest{
+		Query:       fmt.Sprintf(`domain:"*.%s"`, domain),
+		Size:        QuakeSize,
+		Start:       0,
+		IgnoreCache: false,
+		Exclude:     []string{"ip", "port", "hostname", "transport", "asn", "org", "service.http.title", "service.name", "service.http.server", "service.http.host", "location.country_cn", "location.province_cn", "location.city_cn"},
+	}
+	req := &sources.Req{
+		Schema:   "https",
+		Endpoint: "quake.360.net",
+		Path:     "/api/v3/search/quake_service",
+		Method:   "POST",
+		Header: map[string]string{
+			"Content-Type": "application/json",
+			"X-QuakeToken": *apikey,
+		},
+		Body: quakeRequest.toString(),
+	}
+
+	request, err := req.Request()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := session.Do(request, f.Name())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	response := &QuakeResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		return nil, err
+	}
+
+	// 检查响应状态
+	if c, _ := json.Marshal(response.Code); string(c) != "0" {
+		return nil, fmt.Errorf("API error: %s", response.Message)
+	}
+
+	type quakeData struct {
+		Domain string `json:"domain"`
+	}
+	d, _ := json.Marshal(response.Data)
+	var data []quakeData
+	if err := json.Unmarshal(d, &data); err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]struct{})
+	for _, r := range data {
+		sub := r.Domain
+		if strings.HasSuffix(sub, "."+domain) {
+			res[sub] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(res))
+	for k := range res {
+		result = append(result, k)
+	}
+	return result, nil
 }

@@ -28,7 +28,7 @@ func (f Hunter) Name() string {
 	return "hunter"
 }
 
-func (f Hunter) Query(session *sources.Session, query interface{}) (chan sources.Result, error) {
+func (f Hunter) QueryAsset(ctx context.Context, session *sources.Session, query interface{}) (chan sources.Result, error) {
 	apikey := config.RandomKey(f.Name())
 	if apikey == nil {
 		return nil, fmt.Errorf("empty %s keys", f.Name())
@@ -36,10 +36,6 @@ func (f Hunter) Query(session *sources.Session, query interface{}) (chan sources
 	f.apikey = *apikey
 	f.session = session
 	f.results = make(chan sources.Result)
-
-	// 查询总时长限制10分钟
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
 
 	k := query.(options.Keyword)
 	go func() {
@@ -196,6 +192,11 @@ func (f Hunter) search(ctx context.Context, query, prompt string) {
 			page++
 		}
 	}
+}
+
+// QuerySubdomain 不支持子域名收集
+func (f Hunter) QuerySubdomain(ctx context.Context, session *sources.Session, domain string) ([]string, error) {
+	return nil, nil
 }
 
 func init() {

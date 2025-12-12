@@ -22,6 +22,9 @@ type Service struct {
 
 func New(opts *options.Options) (*Service, error) {
 	s := &Service{Options: opts}
+	if len(opts.Agents) == 0 {
+		return nil, fmt.Errorf("no agent/source specified")
+	}
 	for _, agent := range opts.Agents {
 		if v, ok := plugins.Plugins[agent]; ok {
 			s.Plugins = append(s.Plugins, v)
@@ -46,25 +49,24 @@ func New(opts *options.Options) (*Service, error) {
 	return s, nil
 }
 
-func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
+func (s *Service) ExecuteAsset(ctx context.Context) (<-chan sources.Result, error) {
 	// unlikely but as a precaution to handle random panics check all types
 	if err := s.nilCheck(); err != nil {
 		return nil, err
-	}
-
-	if len(s.Plugins) == 0 {
-		return nil, fmt.Errorf("no agent/source specified")
 	}
 
 	megaChan := make(chan sources.Result, DefaultChannelBuffSize)
 	// iterate and run all sources
 	wg := &sync.WaitGroup{}
 	for _, plugin := range s.Plugins {
-		ch, err := plugin.Query(s.Session, s.Options.Query)
+		ch, err := plugin.QueryAsset(ctx, s.Session, s.Options.Query)
 		if err != nil {
 			log.Printf("[%s] %v\n", plugin.Name(), err)
 			continue
-
+		}
+		if ch == nil {
+			// 该插件不支持资产测绘
+			continue
 		}
 		wg.Add(1)
 		go func(source, relay chan sources.Result, ctx context.Context) {
@@ -93,9 +95,56 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	return megaChan, nil
 }
 
-// ExecuteWithWriters writes output to writer along with stdout
-func (s *Service) ExecuteWithCallback(ctx context.Context, callback func(result sources.Result)) error {
-	ch, err := s.Execute(ctx)
+// ExecuteSubdomain 执行子域名收集，返回去重后的子域名列表
+func (s *Service) ExecuteSubdomain(ctx context.Context) ([]string, error) {
+	if err := s.nilCheck(); err != nil {
+		return nil, err
+	}
+
+	k, ok := s.Options.Query.(options.Keyword)
+	if !ok || len(k.Domain) == 0 {
+		return nil, fmt.Errorf("no domain specified in query")
+	}
+
+	unique := make(map[string]struct{})
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, plugin := range s.Plugins {
+		for _, domain := range k.Domain {
+			wg.Add(1)
+			go func(p plugins.Plugin, d string) {
+				defer wg.Done()
+				subs, err := p.QuerySubdomain(ctx, s.Session, d)
+				if err != nil {
+					log.Printf("[%s] %v\n", p.Name(), err)
+					return
+				}
+				if len(subs) == 0 {
+					return
+				}
+				mu.Lock()
+				for _, sub := range subs {
+					unique[sub] = struct{}{}
+				}
+				mu.Unlock()
+				log.Printf("[%s] found %d subdomains for %s\n", p.Name(), len(subs), d)
+			}(plugin, domain)
+		}
+	}
+
+	wg.Wait()
+
+	result := make([]string, 0, len(unique))
+	for sub := range unique {
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+// ExecuteAssetWithCallback 资产测绘带回调
+func (s *Service) ExecuteAssetWithCallback(ctx context.Context, callback func(result sources.Result)) error {
+	ch, err := s.ExecuteAsset(ctx)
 	if err != nil {
 		return err
 	}
