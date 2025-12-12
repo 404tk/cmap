@@ -253,68 +253,82 @@ func (f Quake) QuerySubdomain(ctx context.Context, session *sources.Session, dom
 	go func() {
 		defer close(results)
 
-		quakeRequest := &QuakeRequest{
-			Query:       fmt.Sprintf(`domain:"*.%s"`, domain),
-			Size:        QuakeSize,
-			Start:       0,
-			IgnoreCache: false,
-			Exclude:     []string{"ip", "port", "hostname", "transport", "asn", "org", "service.http.title", "service.name", "service.http.server", "service.http.host", "location.country_cn", "location.province_cn", "location.city_cn"},
-		}
-		req := &sources.Req{
-			Schema:   "https",
-			Endpoint: "quake.360.net",
-			Path:     "/api/v3/search/quake_service",
-			Method:   "POST",
-			Header: map[string]string{
-				"Content-Type": "application/json",
-				"X-QuakeToken": *apikey,
-			},
-			Body: quakeRequest.toString(),
-		}
-
-		request, err := req.Request()
-		if err != nil {
-			return
-		}
-		resp, err := session.Do(request, f.Name())
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-
-		response := &QuakeResponse{}
-		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
-			return
-		}
-
-		// 检查响应状态
-		if c, _ := json.Marshal(response.Code); string(c) != "0" {
-			return
-		}
-
-		type quakeData struct {
-			Domain string `json:"domain"`
-		}
-		d, _ := json.Marshal(response.Data)
-		var data []quakeData
-		if err := json.Unmarshal(d, &data); err != nil {
-			return
-		}
-
 		seen := make(map[string]struct{})
-		for _, r := range data {
+		start := 0
+		var numberOfResults int
+
+		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 			}
-			sub := r.Domain
-			if strings.HasSuffix(sub, "."+domain) {
-				if _, ok := seen[sub]; !ok {
-					seen[sub] = struct{}{}
-					results <- sub
+
+			quakeRequest := &QuakeRequest{
+				Query:       fmt.Sprintf(`domain:"*.%s"`, domain),
+				Size:        QuakeSize,
+				Start:       start,
+				IgnoreCache: false,
+				Exclude:     []string{"ip", "port", "hostname", "transport", "asn", "org", "service.http.title", "service.name", "service.http.server", "service.http.host", "location.country_cn", "location.province_cn", "location.city_cn"},
+			}
+			req := &sources.Req{
+				Schema:   "https",
+				Endpoint: "quake.360.net",
+				Path:     "/api/v3/search/quake_service",
+				Method:   "POST",
+				Header: map[string]string{
+					"Content-Type": "application/json",
+					"X-QuakeToken": *apikey,
+				},
+				Body: quakeRequest.toString(),
+			}
+
+			request, err := req.Request()
+			if err != nil {
+				return
+			}
+			resp, err := session.Do(request, f.Name())
+			if err != nil {
+				return
+			}
+
+			response := &QuakeResponse{}
+			if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+				resp.Body.Close()
+				return
+			}
+			resp.Body.Close()
+
+			// 检查响应状态
+			if c, _ := json.Marshal(response.Code); string(c) != "0" {
+				return
+			}
+
+			type quakeData struct {
+				Domain string `json:"domain"`
+			}
+			d, _ := json.Marshal(response.Data)
+			var data []quakeData
+			if err := json.Unmarshal(d, &data); err != nil {
+				return
+			}
+
+			for _, r := range data {
+				sub := r.Domain
+				if strings.HasSuffix(sub, "."+domain) {
+					if _, ok := seen[sub]; !ok {
+						seen[sub] = struct{}{}
+						results <- sub
+					}
 				}
 			}
+
+			numberOfResults += len(data)
+			// 判断是否还有更多数据
+			if response.Meta.Pagination.Count < QuakeSize || numberOfResults >= response.Meta.Pagination.Total {
+				return
+			}
+			start += QuakeSize
 		}
 	}()
 

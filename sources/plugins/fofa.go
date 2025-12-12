@@ -15,7 +15,7 @@ import (
 
 const (
 	FofaFields = "ip,port,base_protocol,protocol,domain,host,title,product,lastupdatetime"
-	FofaSize   = 10000
+	FofaSize   = 1000
 )
 
 type Fofa struct {
@@ -212,56 +212,70 @@ func (f Fofa) QuerySubdomain(ctx context.Context, session *sources.Session, doma
 
 		query := fmt.Sprintf(`domain="%s"`, domain)
 		qbase64 := base64.StdEncoding.EncodeToString([]byte(query))
-		req := &sources.Req{
-			Schema:   "https",
-			Endpoint: "fofa.info",
-			Path:     "/api/v1/search/all",
-			Method:   "GET",
-			Header:   map[string]string{},
-			Query: fmt.Sprintf("email=%s&key=%s&size=10000&qbase64=%s&fields=host",
-				email, key, qbase64),
-		}
-		request, err := req.Request()
-		if err != nil {
-			return
-		}
-		resp, err := session.Do(request, f.Name())
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-
-		// 单字段查询返回 []string 而非 [][]string
-		type fofaSingleFieldResponse struct {
-			Error   bool     `json:"error"`
-			ErrMsg  string   `json:"errmsg"`
-			Results []string `json:"results"`
-		}
-		fofaResponse := &fofaSingleFieldResponse{}
-		if err := json.NewDecoder(resp.Body).Decode(fofaResponse); err != nil {
-			return
-		}
-		if fofaResponse.Error {
-			return
-		}
-
 		seen := make(map[string]struct{})
-		for _, sub := range fofaResponse.Results {
+		page := 1
+
+		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 			}
-			if strings.HasPrefix(sub, "https://") || strings.HasPrefix(sub, "http://") {
-				sub = strings.Split(sub, "://")[1]
+
+			req := &sources.Req{
+				Schema:   "https",
+				Endpoint: "fofa.info",
+				Path:     "/api/v1/search/all",
+				Method:   "GET",
+				Header:   map[string]string{},
+				Query: fmt.Sprintf("email=%s&key=%s&page=%d&size=%d&qbase64=%s&fields=host",
+					email, key, page, FofaSize, qbase64),
 			}
-			sub = strings.Split(sub, ":")[0]
-			if strings.HasSuffix(sub, "."+domain) {
-				if _, ok := seen[sub]; !ok {
-					seen[sub] = struct{}{}
-					results <- sub
+			request, err := req.Request()
+			if err != nil {
+				return
+			}
+			resp, err := session.Do(request, f.Name())
+			if err != nil {
+				return
+			}
+
+			// 单字段查询返回 []string 而非 [][]string
+			type fofaSingleFieldResponse struct {
+				Error   bool     `json:"error"`
+				ErrMsg  string   `json:"errmsg"`
+				Size    int      `json:"size"`
+				Results []string `json:"results"`
+			}
+			fofaResponse := &fofaSingleFieldResponse{}
+			if err := json.NewDecoder(resp.Body).Decode(fofaResponse); err != nil {
+				resp.Body.Close()
+				return
+			}
+			resp.Body.Close()
+
+			if fofaResponse.Error {
+				return
+			}
+
+			for _, sub := range fofaResponse.Results {
+				if strings.HasPrefix(sub, "https://") || strings.HasPrefix(sub, "http://") {
+					sub = strings.Split(sub, "://")[1]
+				}
+				sub = strings.Split(sub, ":")[0]
+				if strings.HasSuffix(sub, "."+domain) {
+					if _, ok := seen[sub]; !ok {
+						seen[sub] = struct{}{}
+						results <- sub
+					}
 				}
 			}
+
+			// 判断是否还有更多数据
+			if fofaResponse.Size < FofaSize || len(fofaResponse.Results) == 0 {
+				return
+			}
+			page++
 		}
 	}()
 
