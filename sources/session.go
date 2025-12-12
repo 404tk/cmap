@@ -102,19 +102,3 @@ func (s *Session) Do(request *http.Request, source string) (*http.Response, erro
 	}
 	return resp, nil
 }
-
-// DefaultClient 返回默认 HTTP 客户端（用于子域名收集等场景）
-func DefaultClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 100,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-			ResponseHeaderTimeout: 30 * time.Second,
-			Proxy:                 http.ProxyFromEnvironment,
-		},
-		Timeout: 30 * time.Second,
-	}
-}

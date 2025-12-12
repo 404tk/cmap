@@ -371,3 +371,61 @@ done:
 	}
 	return result, lastErr
 }
+
+// VerifyKeys 验证 Zoomeye API 密钥
+func (f Zoomeye) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	keys := config.GetKeys(f.Name())
+	if len(keys) == 0 {
+		return nil
+	}
+
+	results := make([]config.KeyStatus, 0, len(keys))
+	for i, key := range keys {
+		// Zoomeye 限速 1 req/s
+		if i > 0 {
+			time.Sleep(time.Second)
+		}
+		status := config.KeyStatus{Key: maskKey(key)}
+
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "api.zoomeye.org",
+			Path:     "/resources-info",
+			Method:   "GET",
+			Header:   map[string]string{"API-KEY": key},
+		}
+
+		request, err := req.Request()
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		type zoomeyeResourceInfo struct {
+			QuotaInfo struct {
+				RemainTotalQuota int64 `json:"remain_total_quota"`
+			} `json:"quota_info"`
+		}
+		var info zoomeyeResourceInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			resp.Body.Close()
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+		resp.Body.Close()
+
+		status.Valid = true
+		status.Credits = info.QuotaInfo.RemainTotalQuota
+		results = append(results, status)
+	}
+	return results
+}

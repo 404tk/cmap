@@ -311,3 +311,68 @@ func (f Quake) QuerySubdomain(ctx context.Context, session *sources.Session, dom
 	}
 	return result, nil
 }
+
+// VerifyKeys 验证 Quake API 密钥
+func (f Quake) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	keys := config.GetKeys(f.Name())
+	if len(keys) == 0 {
+		return nil
+	}
+
+	results := make([]config.KeyStatus, 0, len(keys))
+	for _, key := range keys {
+		status := config.KeyStatus{Key: maskKey(key)}
+
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "quake.360.net",
+			Path:     "/api/v3/user/info",
+			Method:   "GET",
+			Header:   map[string]string{"X-QuakeToken": key},
+		}
+
+		request, err := req.Request()
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		type quakeUserInfo struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Data    struct {
+				Credit int64 `json:"credit"`
+			} `json:"data"`
+		}
+		var info quakeUserInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			resp.Body.Close()
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+		resp.Body.Close()
+
+		if info.Code != 0 {
+			status.Error = fmt.Errorf("%s", info.Message)
+			results = append(results, status)
+			continue
+		}
+
+		status.Valid = true
+		status.Credits = info.Data.Credit
+		if status.Credits == 0 {
+			status.Info = "积分不足"
+		}
+		results = append(results, status)
+	}
+	return results
+}

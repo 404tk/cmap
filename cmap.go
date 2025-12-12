@@ -9,6 +9,7 @@ import (
 
 	"github.com/404tk/cmap/options"
 	"github.com/404tk/cmap/sources"
+	"github.com/404tk/cmap/sources/config"
 	"github.com/404tk/cmap/sources/plugins"
 )
 
@@ -172,4 +173,17 @@ func (s *Service) nilCheck() error {
 		return fmt.Errorf("session cannot be nil")
 	}
 	return nil
+}
+
+// VerifyKeys 验证所有配置的平台凭据
+// 返回 map[platform][]KeyStatus
+func (s *Service) VerifyKeys() map[string][]config.KeyStatus {
+	results := make(map[string][]config.KeyStatus)
+	for _, plugin := range s.Plugins {
+		statuses := plugin.VerifyKeys(s.Session)
+		if len(statuses) > 0 {
+			results[plugin.Name()] = statuses
+		}
+	}
+	return results
 }

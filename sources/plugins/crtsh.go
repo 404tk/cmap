@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/404tk/cmap/sources"
+	"github.com/404tk/cmap/sources/config"
 )
 
 type CrtSh struct{}
@@ -66,6 +67,11 @@ func (f CrtSh) QuerySubdomain(ctx context.Context, session *sources.Session, dom
 // QueryAsset 不支持资产测绘
 func (f CrtSh) QueryAsset(ctx context.Context, session *sources.Session, query interface{}) (chan sources.Result, error) {
 	return nil, nil
+}
+
+// VerifyKeys 无需凭据
+func (f CrtSh) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	return nil
 }
 
 func init() {

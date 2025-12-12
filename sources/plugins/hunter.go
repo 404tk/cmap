@@ -199,6 +199,82 @@ func (f Hunter) QuerySubdomain(ctx context.Context, session *sources.Session, do
 	return nil, nil
 }
 
+// VerifyKeys 验证 Hunter API 密钥
+func (f Hunter) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	keys := config.GetKeys(f.Name())
+	if len(keys) == 0 {
+		return nil
+	}
+
+	results := make([]config.KeyStatus, 0, len(keys))
+	for _, key := range keys {
+		status := config.KeyStatus{Key: maskKey(key)}
+
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "hunter.qianxin.com",
+			Path:     "/openApi/userInfo",
+			Method:   "GET",
+			Header:   map[string]string{},
+			Query:    fmt.Sprintf("api-key=%s", key),
+		}
+
+		request, err := req.Request()
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		type hunterUserInfo struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Data    struct {
+				Type             string `json:"type"`
+				RestEquityPoint  int64  `json:"rest_equity_point"`
+				RestFreePoint    int64  `json:"rest_free_point"`
+				RestExportQuota  int64  `json:"rest_export_quota"`
+				DayFreePoint     int64  `json:"day_free_point"`
+				DayExportQuota   int64  `json:"day_export_quota"`
+				OnceExportQuota  int64  `json:"once_export_quota"`
+				PersonalInfo     struct {
+					Username string `json:"username"`
+					Phone    string `json:"phone"`
+					IsCharge bool   `json:"is_charge"`
+				} `json:"personal_info"`
+			} `json:"data"`
+		}
+		var info hunterUserInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			resp.Body.Close()
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+		resp.Body.Close()
+
+		if info.Code != 200 {
+			status.Error = fmt.Errorf("%s", info.Message)
+			results = append(results, status)
+			continue
+		}
+
+		status.Valid = true
+		status.Credits = info.Data.RestEquityPoint
+		status.Info = fmt.Sprintf("%s, 当日免费积分: %d/%d",
+			info.Data.Type, info.Data.RestFreePoint, info.Data.DayFreePoint)
+		results = append(results, status)
+	}
+	return results
+}
+
 func init() {
 	registerPlugin("hunter", Hunter{})
 }

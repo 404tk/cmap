@@ -258,3 +258,85 @@ func (f Fofa) QuerySubdomain(ctx context.Context, session *sources.Session, doma
 	}
 	return result, nil
 }
+
+// VerifyKeys 验证 FOFA API 密钥
+func (f Fofa) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	keys := config.GetKeys(f.Name())
+	if len(keys) == 0 {
+		return nil
+	}
+
+	results := make([]config.KeyStatus, 0, len(keys))
+	for _, key := range keys {
+		status := config.KeyStatus{Key: maskKey(key)}
+
+		parts := strings.Split(key, ":")
+		if len(parts) < 2 {
+			status.Error = fmt.Errorf("invalid key format")
+			results = append(results, status)
+			continue
+		}
+
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "fofa.info",
+			Path:     "/api/v1/info/my",
+			Method:   "GET",
+			Header:   map[string]string{},
+			Query:    fmt.Sprintf("key=%s", parts[1]),
+		}
+
+		request, err := req.Request()
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		type fofaUserInfo struct {
+			Error           bool   `json:"error"`
+			Email           string `json:"email"`
+			Username        string `json:"username"`
+			Category        string `json:"category"`
+			FCoin           int    `json:"fcoin"`
+			FofaPoint       int    `json:"fofa_point"`
+			RemainFreePoint int    `json:"remain_free_point"`
+			RemainAPIQuery  int    `json:"remain_api_query"`
+			RemainAPIData   int    `json:"remain_api_data"`
+			Isvip           bool   `json:"isvip"`
+			VipLevel        int    `json:"vip_level"`
+			IsVerified      bool   `json:"is_verified"`
+			Avatar          string `json:"avatar"`
+			Message         string `json:"message"`
+			FofacliVer      string `json:"fofacli_ver"`
+			FofaServer      bool   `json:"fofa_server"`
+		}
+		var info fofaUserInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			resp.Body.Close()
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+		resp.Body.Close()
+
+		if info.Error {
+			status.Error = fmt.Errorf("%s", info.Message)
+			results = append(results, status)
+			continue
+		}
+
+		status.Valid = true
+		status.Credits = int64(info.RemainAPIData)
+		status.Info = fmt.Sprintf("VIP%d", info.VipLevel)
+		results = append(results, status)
+	}
+	return results
+}

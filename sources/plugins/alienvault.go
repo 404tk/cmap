@@ -72,6 +72,68 @@ func (f AlienVault) QueryAsset(ctx context.Context, session *sources.Session, qu
 	return nil, nil
 }
 
+// VerifyKeys 验证 AlienVault API 密钥
+func (f AlienVault) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	keys := config.GetKeys(f.Name())
+	if len(keys) == 0 {
+		return nil
+	}
+
+	results := make([]config.KeyStatus, 0, len(keys))
+	for _, key := range keys {
+		status := config.KeyStatus{Key: maskKey(key)}
+
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "otx.alienvault.com",
+			Path:     "/api/v1/user/me",
+			Method:   "GET",
+			Header:   map[string]string{"X-OTX-API-KEY": key},
+		}
+
+		request, err := req.Request()
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		type avUserInfo struct {
+			Username       string `json:"username"`
+			PulseCount     int    `json:"pulse_count"`
+			IndicatorCount int    `json:"indicator_count"`
+			Error          string `json:"error"`
+		}
+		var info avUserInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			resp.Body.Close()
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+		resp.Body.Close()
+
+		if info.Error != "" {
+			status.Error = fmt.Errorf("%s", info.Error)
+			results = append(results, status)
+			continue
+		}
+
+		status.Valid = true
+		status.Info = fmt.Sprintf("%s, Pulses: %d, Indicators: %d",
+			info.Username, info.PulseCount, info.IndicatorCount)
+		results = append(results, status)
+	}
+	return results
+}
+
 func init() {
 	registerPlugin("alienvault", AlienVault{})
 }

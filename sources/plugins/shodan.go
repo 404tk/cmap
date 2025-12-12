@@ -284,3 +284,70 @@ done:
 	}
 	return result, lastErr
 }
+
+// VerifyKeys 验证 Shodan API 密钥
+func (f Shodan) VerifyKeys(session *sources.Session) []config.KeyStatus {
+	keys := config.GetKeys(f.Name())
+	if len(keys) == 0 {
+		return nil
+	}
+
+	results := make([]config.KeyStatus, 0, len(keys))
+	for i, key := range keys {
+		// Shodan 限速 1 req/s
+		if i > 0 {
+			time.Sleep(time.Second)
+		}
+		status := config.KeyStatus{Key: maskKey(key)}
+
+		req := &sources.Req{
+			Schema:   "https",
+			Endpoint: "api.shodan.io",
+			Path:     "/api-info",
+			Method:   "GET",
+			Header:   map[string]string{"User-Agent": "curl/8.7.1"},
+			Query:    fmt.Sprintf("key=%s", key),
+		}
+
+		request, err := req.Request()
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		resp, err := session.Do(request, f.Name())
+		if err != nil {
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+
+		type shodanAPIInfo struct {
+			QueryCredits int64  `json:"query_credits"`
+			ScanCredits  int64  `json:"scan_credits"`
+			Plan         string `json:"plan"`
+			Error        string `json:"error"`
+		}
+		var info shodanAPIInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			resp.Body.Close()
+			status.Error = err
+			results = append(results, status)
+			continue
+		}
+		resp.Body.Close()
+
+		if info.Error != "" {
+			status.Error = fmt.Errorf("%s", info.Error)
+			results = append(results, status)
+			continue
+		}
+
+		status.Valid = true
+		status.Credits = info.QueryCredits
+		status.Info = fmt.Sprintf("Plan: %s", info.Plan)
+		results = append(results, status)
+	}
+	return results
+}

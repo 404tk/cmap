@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/404tk/cmap/sources"
+	"github.com/404tk/cmap/sources/config"
 )
 
 // Plugin 统一插件接口
@@ -12,6 +13,7 @@ type Plugin interface {
 	Name() string
 	QueryAsset(context.Context, *sources.Session, interface{}) (chan sources.Result, error)
 	QuerySubdomain(context.Context, *sources.Session, string) ([]string, error)
+	VerifyKeys(*sources.Session) []config.KeyStatus
 }
 
 var Plugins = make(map[string]Plugin)
@@ -28,4 +30,12 @@ func truncateString(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// maskKey 脱敏显示密钥
+func maskKey(key string) string {
+	if len(key) <= 8 {
+		return key
+	}
+	return key[:4] + "****" + key[len(key)-4:]
 }
